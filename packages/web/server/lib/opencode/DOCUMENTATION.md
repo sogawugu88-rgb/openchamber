@@ -35,6 +35,7 @@ This module provides OpenCode server integration utilities for the web server ru
 - `packages/web/server/lib/agent-tool/runtime.js`: managed OpenCode custom-tool materialization, environment injection, loopback authentication, and fixed CLI action dispatch.
 - `packages/web/server/lib/system-prompt/runtime.js`: opt-in managed OpenCode system-prompt optimizer materialization and plugin injection.
 - `packages/web/server/lib/opencode/server-utils-runtime.js`: shared server runtime utilities for OpenCode proxy wiring, OpenCode port/readiness helpers, and snapshot fetchers.
+- `packages/web/server/lib/opencode/token-usage.js`: token usage aggregation service for OpenCode session message history.
 - `packages/web/server/lib/opencode/openchamber-routes.js`: OpenChamber update and models metadata route registration.
 - `packages/web/server/lib/opencode/pwa-manifest-routes.js`: PWA manifest route registration with recent-session shortcut resolution and short-lived caching.
 - `packages/web/server/lib/opencode/project-icon-routes.js`: project icon upload/read/discovery route registration and icon storage orchestration.
@@ -316,6 +317,13 @@ Managed health failures are classified as `timeout`, `connection_refused`, `conn
   - `fetchProvidersSnapshot()`
   - `fetchModelsSnapshot()`
   - `setupProxy(app)`
+
+## Public exports (token-usage.js)
+- `createTokenUsageService({ openCodeFetch, getServerTimezone })`: creates the token usage aggregation service.
+- `getReport({ month })`: fetches the complete OpenCode session/message history and returns `{ timezone, month, today, currentMonth, total, days, fetchedAt }`.
+- Dates are derived from assistant message completion (falling back to creation) using the server timezone. `days` contains only buckets in the requested `YYYY-MM` month; `currentMonth` is based on the server's current local month and `total` covers all fetched history.
+- Each assistant usage sample is counted once using its session/message identity and optional assistant step. Token fields accept only finite, non-negative numbers; missing usage is ignored. The four usage categories are input, output, reasoning, and cache, with cache exposed as `cacheRead` and `cacheWrite` components and `total` as their sum.
+- Fetch failures and malformed top-level session/message responses throw. A complete history with no usage returns a successful report with zero totals and empty daily buckets, so empty data is not used to mask an unavailable source.
 
 ## Public exports (shutdown-runtime.js)
 - `createGracefulShutdownRuntime(dependencies)`: creates graceful shutdown runtime for managed OpenCode and web server teardown sequencing.
