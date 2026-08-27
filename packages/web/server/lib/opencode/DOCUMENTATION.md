@@ -321,7 +321,7 @@ Managed health failures are classified as `timeout`, `connection_refused`, `conn
 ## Public exports (token-usage.js)
 - `createTokenUsageService({ openCodeFetch, getServerTimezone })`: creates the token usage aggregation service.
 - `getReport({ month })`: fetches the complete OpenCode session/message history and returns `{ timezone, month, today, currentMonth, total, days, fetchedAt }`.
-- Dates are derived from assistant message completion (falling back to creation) using the server timezone. `days` contains only buckets in the requested `YYYY-MM` month; `currentMonth` is based on the server's current local month and `total` covers all fetched history.
+- Dates are derived from assistant message completion (falling back to creation) using the server timezone. `days` contains only buckets in the requested `YYYY-MM` month; `today` is independently aggregated for the server's current local date; `currentMonth` is based on the server's current local month and `total` covers all fetched history.
 - Each assistant usage sample is counted once using its session/message identity and optional assistant step. Token fields accept only finite, non-negative numbers; missing usage is ignored. The four usage categories are input, output, reasoning, and cache, with cache exposed as `cacheRead` and `cacheWrite` components and `total` as their sum.
 - Fetch failures and malformed session or message responses throw. Valid records without usage and a complete history with no usage return a successful report with zero totals and empty daily buckets, so empty data is not used to mask an unavailable source.
 

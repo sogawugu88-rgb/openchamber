@@ -154,6 +154,22 @@ describe('token usage service', () => {
     });
   });
 
+  it('aggregates today independently when the selected month is historical', async () => {
+    vi.useFakeTimers({ now: new Date('2026-08-15T12:00:00Z') });
+    const { service } = createService({
+      '/session': [{ id: 'session-1' }],
+      '/session/session-1/message': [
+        assistant({ sessionID: 'session-1', id: 'july', completed: '2026-07-31T12:00:00Z', tokens: { input: 7 } }),
+        assistant({ sessionID: 'session-1', id: 'today', completed: '2026-08-15T10:00:00Z', tokens: { output: 8 } }),
+      ],
+    });
+
+    const report = await service.getReport({ month: '2026-07' });
+
+    expect(report.today).toEqual({ date: '2026-08-15', ...bucket({ output: 8, total: 8 }) });
+    expect(report.days).toEqual({ '2026-07-31': bucket({ input: 7, total: 7 }) });
+  });
+
   it('returns a successful empty report for complete history without usage', async () => {
     const { service } = createService({ '/session': [] });
 

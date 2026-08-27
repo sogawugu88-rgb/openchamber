@@ -110,12 +110,14 @@ export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) =>
     const currentMonth = todayDate.slice(0, 7);
     const total = createBucket();
     const currentMonthTotal = createBucket();
+    const todayTotal = createBucket();
     const days = {};
 
     for (const sample of samples) {
       addSample(total, sample.sample);
       const date = localDate(sample.timestamp, timezone);
       if (date.slice(0, 7) === currentMonth) addSample(currentMonthTotal, sample.sample);
+      if (date === todayDate) addSample(todayTotal, sample.sample);
       if (date.slice(0, 7) !== month) continue;
       days[date] ??= createBucket();
       addSample(days[date], sample.sample);
@@ -124,7 +126,7 @@ export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) =>
     return {
       timezone,
       month,
-      today: { date: todayDate, ...days[todayDate] ?? createBucket() },
+      today: { date: todayDate, ...todayTotal },
       currentMonth: currentMonthTotal,
       total,
       days,
