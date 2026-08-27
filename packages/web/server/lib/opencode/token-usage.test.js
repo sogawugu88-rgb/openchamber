@@ -12,15 +12,17 @@ const bucket = (values = {}) => ({
   ...values,
 });
 
-const assistant = ({ sessionID, id, completed, providerID, modelID, step, tokens }) => {
+const assistant = ({ sessionID, id, completed, created, providerID, modelID, step, tokens }) => {
   const info = {
     id,
     sessionID,
     role: 'assistant',
     providerID,
     modelID,
-    time: { completed },
+    time: {},
   };
+  if (completed !== undefined) info.time.completed = completed;
+  if (created !== undefined) info.time.created = created;
   if (step !== undefined) info.step = step;
   if (tokens !== undefined) info.tokens = tokens;
   return { info, parts: [] };
@@ -121,6 +123,20 @@ describe('token usage service', () => {
     });
   });
 
+  it('falls back to a valid created timestamp when completed is invalid', async () => {
+    const { service } = createService({
+      '/session': [{ id: 'session-1' }],
+      '/session/session-1/message': [assistant({
+        sessionID: 'session-1', id: 'message-1', completed: 'not-a-date',
+        created: '2026-08-04T10:00:00Z', tokens: { input: 4 },
+      })],
+    });
+
+    await expect(service.getReport({ month: '2026-08' })).resolves.toMatchObject({
+      days: { '2026-08-04': bucket({ input: 4, total: 4 }) },
+    });
+  });
+
   it('limits daily buckets to the selected month while retaining all-time and current-month totals', async () => {
     vi.useFakeTimers({ now: new Date('2026-08-15T12:00:00Z') });
     const { service } = createService({
@@ -154,5 +170,11 @@ describe('token usage service', () => {
 
     const malformed = createService({ '/session': { data: [] } });
     await expect(malformed.service.getReport({ month: '2026-08' })).rejects.toThrow(/session/i);
+
+    const malformedMessage = createService({
+      '/session': [{ id: 'session-1' }],
+      '/session/session-1/message': [{ info: null }],
+    });
+    await expect(malformedMessage.service.getReport({ month: '2026-08' })).rejects.toThrow(/message/i);
   });
 });

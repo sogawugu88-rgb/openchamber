@@ -323,7 +323,7 @@ Managed health failures are classified as `timeout`, `connection_refused`, `conn
 - `getReport({ month })`: fetches the complete OpenCode session/message history and returns `{ timezone, month, today, currentMonth, total, days, fetchedAt }`.
 - Dates are derived from assistant message completion (falling back to creation) using the server timezone. `days` contains only buckets in the requested `YYYY-MM` month; `currentMonth` is based on the server's current local month and `total` covers all fetched history.
 - Each assistant usage sample is counted once using its session/message identity and optional assistant step. Token fields accept only finite, non-negative numbers; missing usage is ignored. The four usage categories are input, output, reasoning, and cache, with cache exposed as `cacheRead` and `cacheWrite` components and `total` as their sum.
-- Fetch failures and malformed top-level session/message responses throw. A complete history with no usage returns a successful report with zero totals and empty daily buckets, so empty data is not used to mask an unavailable source.
+- Fetch failures and malformed session or message responses throw. Valid records without usage and a complete history with no usage return a successful report with zero totals and empty daily buckets, so empty data is not used to mask an unavailable source.
 
 ## Public exports (shutdown-runtime.js)
 - `createGracefulShutdownRuntime(dependencies)`: creates graceful shutdown runtime for managed OpenCode and web server teardown sequencing.

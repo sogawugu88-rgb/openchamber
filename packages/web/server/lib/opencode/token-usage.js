@@ -13,6 +13,12 @@ const tokenValue = (value) => (
   Number.isFinite(value) && value >= 0 ? value : 0
 );
 
+const parseTimestamp = (value) => {
+  if (value === undefined || value === null) return null;
+  const timestamp = Number.isFinite(value) ? value : Date.parse(String(value));
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
 const addSample = (target, sample) => {
   target.input += sample.input;
   target.output += sample.output;
@@ -23,14 +29,23 @@ const addSample = (target, sample) => {
 };
 
 const normalizeMessage = (record, sessionID) => {
-  if (record?.constructor !== Object || record.info?.constructor !== Object) return null;
+  if (record?.constructor !== Object || record.info?.constructor !== Object) {
+    throw new Error('Malformed OpenCode message record');
+  }
   const info = record.info;
+  if (info.role !== 'assistant' && info.role !== 'user') {
+    throw new Error('Malformed OpenCode message record');
+  }
+  if (info.role !== 'assistant') return null;
   const id = info.id?.trim?.();
-  if (info.role !== 'assistant' || !id || info.tokens?.constructor !== Object) return null;
+  if (!id) throw new Error('Malformed OpenCode assistant message record');
+  if (!info.tokens) return null;
+  if (info.tokens.constructor !== Object) throw new Error('Malformed OpenCode usage record');
 
-  const completed = info.time?.completed ?? info.time?.created;
-  const timestamp = Number.isFinite(completed) ? completed : Date.parse(String(completed));
-  if (!Number.isFinite(timestamp)) return null;
+  const timestamp = [info.time?.completed, info.time?.created]
+    .map(parseTimestamp)
+    .find((value) => value !== null);
+  if (timestamp === undefined) throw new Error('Malformed OpenCode assistant timestamp');
 
   const tokens = info.tokens;
   const sample = {
