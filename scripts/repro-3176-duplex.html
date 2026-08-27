@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>duplex repro</title></head>
+<body>
+<pre id="results">running...</pre>
+<script>
+  // Reproduces issue #3176: SDK fetch layer constructs `new Request(...)` with a
+  // streaming (ReadableStream) body without `duplex: "half"`, which Chromium
+  // (the VS Code webview runtime) rejects.
+  const results = [];
+  const log = (line) => results.push(line);
+
+  const makeStream = () =>
+    new ReadableStream({
+      start(c) { c.enqueue(new TextEncoder().encode('{"title":"x"}')); c.close(); },
+    });
+
+  // 1. The SDK's request-construction site (client.gen.js:48):
+  //    `new Request(url, requestInit)` where requestInit.body is a stream.
+  try {
+    const stream = makeStream();
+    new Request('http://127.0.0.1:4000/session', { method: 'POST', body: stream });
+    log('1. new Request(url, { body: stream })            -> NO THROW (unexpected)');
+  } catch (e) {
+    log('1. new Request(url, { body: stream })            -> THROWS: ' + e.message);
+  }
+
+  // 2. Same construction with the suggested fix `duplex: "half"`.
+  try {
+    const stream = makeStream();
+    const r = new Request('http://127.0.0.1:4000/session', { method: 'POST', body: stream, duplex: 'half' });
+    log('2. new Request(url, { body: stream, duplex })    -> OK, body=' + (r.body !== null));
+  } catch (e) {
+    log('2. new Request(url, { body: stream, duplex })    -> THROWS: ' + e.message);
+  }
+
+  // 3. Request-to-Request copy with init spread, no duplex and no init body
+  //    (runtime-fetch.ts:290 / installRuntimeFetchBridge:389 pattern).
+  try {
+    const src = new Request('http://127.0.0.1:4000/session', { method: 'POST', body: makeStream(), duplex: 'half' });
+    const copy = new Request(src, { headers: { 'x-test': '1' } });
+    log('3. new Request(srcRequest, { headers })          -> OK, body=' + (copy.body !== null));
+  } catch (e) {
+    log('3. new Request(srcRequest, { headers })          -> THROWS: ' + e.message);
+  }
+
+  // 3b. Direct Request-to-Request clone, the SDK URL-rewrite form
+  //     (v2/client.js:38 `new Request(url, request)`).
+  try {
+    const src = new Request('http://127.0.0.1:4000/session', { method: 'POST', body: makeStream(), duplex: 'half' });
+    const clone = new Request('http://127.0.0.1:4000/session?directory=%2Ffoo', src);
+    log('3b. new Request(url, srcRequest)                 -> OK, body=' + (clone.body !== null));
+  } catch (e) {
+    log('3b. new Request(url, srcRequest)                 -> THROWS: ' + e.message);
+  }
+
+  // 4. Request-to-Request copy where the init REBUILDS the body from the source
+  //    request (the "clone-from-Request" site the issue calls out: rebuild with
+  //    `body: req.body`). This is the shape that must pass duplex explicitly.
+  try {
+    const src = new Request('http://127.0.0.1:4000/session', { method: 'POST', body: makeStream(), duplex: 'half' });
+    new Request('http://127.0.0.1:4000/session?directory=%2Ffoo', {
+      method: src.method,
+      headers: src.headers,
+      redirect: src.redirect,
+      signal: src.signal,
+      body: src.body,
+    });
+    log('4. new Request(url, { ...req, body: req.body }) -> NO THROW (unexpected)');
+  } catch (e) {
+    log('4. new Request(url, { ...req, body: req.body }) -> THROWS: ' + e.message);
+  }
+
+  // 5. Control: JSON string body (normal session.create) never requires duplex.
+  try {
+    const r = new Request('http://127.0.0.1:4000/session', { method: 'POST', body: '{"title":"x"}' });
+    log('5. new Request(url, { body: "json string" })     -> OK');
+  } catch (e) {
+    log('5. new Request(url, { body: "json string" })     -> THROWS: ' + e.message);
+  }
+
+  document.getElementById('results').textContent = results.join('\n');
+  document.title = 'duplex-repro-done';
+</script>
+</body>
+</html>
