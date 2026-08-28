@@ -17,6 +17,11 @@ import { useI18n } from '@/lib/i18n';
 import { formatTimeForPreference } from '@/lib/timeFormat';
 import { useUIStore, type TimeFormatPreference } from '@/stores/useUIStore';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
+import { TokenUsageCalendar } from './TokenUsageCalendar';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { getRuntimeKey } from '@/lib/runtime-switch';
+import { useAllSessionStatuses } from '@/sync/sync-context';
+import { getMonthKey } from './tokenUsage';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -38,6 +43,55 @@ interface ModelInfo {
 
 export const UsagePage: React.FC = () => {
   const { t } = useI18n();
+  const { tokenUsage } = useRuntimeAPIs();
+  const runtimeKey = getRuntimeKey();
+  const sessionStatuses = useAllSessionStatuses();
+  const [tokenMonth, setTokenMonth] = React.useState(() => getMonthKey(new Date().toISOString().slice(0, 7), 0));
+  const [tokenReport, setTokenReport] = React.useState<{ runtimeKey: string; report: import('@/lib/api/types').TokenUsageReport } | null>(null);
+  const [tokenLoading, setTokenLoading] = React.useState(true);
+  const [tokenError, setTokenError] = React.useState<string | null>(null);
+  const tokenRequestRef = React.useRef(0);
+  const refreshScheduledRef = React.useRef(false);
+  const previousStatusesRef = React.useRef<Record<string, { type: string }>>({});
+
+  const loadTokenUsage = React.useCallback(() => {
+    const requestId = ++tokenRequestRef.current;
+    setTokenLoading(true);
+    setTokenError(null);
+    void tokenUsage.getReport(tokenMonth)
+      .then((report) => {
+        if (requestId !== tokenRequestRef.current) return;
+        setTokenReport({ runtimeKey, report });
+      })
+      .catch((cause: unknown) => {
+        if (requestId !== tokenRequestRef.current) return;
+        setTokenError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        if (requestId === tokenRequestRef.current) setTokenLoading(false);
+      });
+  }, [runtimeKey, tokenMonth, tokenUsage]);
+
+  React.useEffect(() => {
+    loadTokenUsage();
+  }, [loadTokenUsage]);
+
+  React.useEffect(() => {
+    const previous = previousStatusesRef.current;
+    const settled = Object.entries(sessionStatuses).some(([sessionId, status]) => {
+      const previousType = previous[sessionId]?.type;
+      return previousType === 'busy' && status.type === 'idle';
+    });
+    previousStatusesRef.current = sessionStatuses;
+    if (!settled || refreshScheduledRef.current) return;
+    refreshScheduledRef.current = true;
+    queueMicrotask(() => {
+      refreshScheduledRef.current = false;
+      loadTokenUsage();
+    });
+  }, [loadTokenUsage, sessionStatuses]);
+
+  const visibleTokenReport = tokenReport?.runtimeKey === runtimeKey ? tokenReport.report : null;
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const results = useQuotaStore((state) => state.results);
   const selectedProviderId = useQuotaStore((state) => state.selectedProviderId);
@@ -112,12 +166,14 @@ export const UsagePage: React.FC = () => {
     return groupModelsByFamilyWithGetter(
       providerModels,
       (model) => model.name,
+      // SAFETY: selectedProviderId is checked above and quota provider IDs are the store's string union.
       selectedProviderId as QuotaProviderId
     );
   }, [providerModels, selectedProviderId]);
 
   const sortedFamilies = React.useMemo(() => {
     if (!selectedProviderId) return [];
+    // SAFETY: the null case is returned above; configured provider IDs match QuotaProviderId.
     const families = getAllModelFamilies(selectedProviderId as QuotaProviderId);
     return sortModelFamilies(families);
   }, [selectedProviderId]);
@@ -141,7 +197,7 @@ export const UsagePage: React.FC = () => {
     const nextSelected = isSelected
       ? currentSelected.filter((m) => m !== modelName)
       : [...currentSelected, modelName];
-    const nextSettings: Record<string, string[]> = { ...selectedModels, [selectedProviderId]: nextSelected };
+    const nextSettings = { ...selectedModels, [selectedProviderId]: nextSelected } satisfies Record<string, string[]>;
     void updateDesktopSettings({ usageSelectedModels: nextSettings });
   }, [selectedProviderId, selectedModels, toggleModelSelected]);
 
@@ -182,6 +238,15 @@ export const UsagePage: React.FC = () => {
           info={t('settings.usage.page.options.showInWorkStatusTooltip')}
         />
       </SettingsSection>
+
+      <TokenUsageCalendar
+        month={tokenMonth}
+        report={visibleTokenReport}
+        loading={tokenLoading}
+        error={tokenError}
+        onRetry={loadTokenUsage}
+        onMonthChange={(offset) => setTokenMonth((current) => getMonthKey(current, offset))}
+      />
 
       {!selectedResult && (
         <p className="typography-ui-label text-foreground pb-8">{t('settings.usage.page.state.noData')}</p>
