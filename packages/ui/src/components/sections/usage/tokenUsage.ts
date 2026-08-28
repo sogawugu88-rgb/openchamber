@@ -33,9 +33,6 @@ export const getMonthKey = (month: string, offset: number): string => {
   return `${year}-${pad(monthNumber)}`;
 };
 
-export const getInitialMonthKey = (date: Date): string =>
-  `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
-
 export const isTokenUsageReportCurrent = (
   report: TokenUsageReport,
   reportRuntimeKey: string,

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TokenUsageReport, RuntimeAPIs } from '@openchamber/ui/lib/api/types';
-import type { RuntimeFetchOptions } from '@openchamber/ui/lib/runtime-fetch';
 
 import { createWebAPIs } from './index';
 
@@ -14,7 +13,7 @@ const report: TokenUsageReport = {
   fetchedAt: 1,
 };
 
-const mockRuntimeFetch = vi.fn(async (_input: string | URL | Request, _init?: RuntimeFetchOptions) => new Response(JSON.stringify(report), { status: 200 }));
+const mockRuntimeFetch = vi.fn(async () => new Response(JSON.stringify(report), { status: 200 }));
 
 const runtimeAPIs: RuntimeAPIs = createWebAPIs({ runtimeFetch: mockRuntimeFetch });
 
