@@ -135,6 +135,21 @@ describe('deriveSessionMetrics', () => {
     });
   });
 
+  test('preserves finite object token totals alongside bucket values', () => {
+    // SAFETY: this fixture intentionally models the server token payload with a total field.
+    const objectMessage = {
+      info: { id: 'object-total', role: 'assistant', tokens: { total: 123, input: 10, output: 5 } },
+      parts: [],
+    } as SessionMessageRecord;
+
+    expect(deriveSessionMetrics([objectMessage], {})).toEqual({
+      turns: 0,
+      steps: 1,
+      tokens: { total: 123, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      cacheHitPercent: 0,
+    });
+  });
+
   test('reports zero cache hit when positive input has no cache reads', () => {
     const metrics = deriveSessionMetrics([
       assistant('no-cache', { input: 100, output: 5, cache: { read: 0, write: 0 } }),

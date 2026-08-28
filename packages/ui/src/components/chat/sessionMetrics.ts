@@ -4,6 +4,7 @@ import { extractTokensFromMessage } from '@/stores/utils/tokenUtils';
 
 type TokenCache = { read?: number; write?: number };
 type TokenPayload = {
+  total?: number;
   input?: number;
   output?: number;
   reasoning?: number;
@@ -113,6 +114,10 @@ export const deriveSessionMetrics = (
       total += finiteNonNegative(extractedTotal);
       hasTotal = true;
     } else if (tokens) {
+      if (tokens.total !== undefined && Number.isFinite(tokens.total) && tokens.total >= 0) {
+        total += tokens.total;
+        hasTotal = true;
+      }
       input += finiteNonNegative(tokens.input);
       output += finiteNonNegative(tokens.output);
       reasoning += finiteNonNegative(tokens.reasoning);
