@@ -790,6 +790,29 @@ export interface ToolsAPI {
   getAvailableTools(): Promise<string[]>;
 }
 
+export interface TokenUsageBucket {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+export interface TokenUsageReport {
+  timezone: string;
+  month: string;
+  today: TokenUsageBucket & { date: string };
+  currentMonth: TokenUsageBucket;
+  total: TokenUsageBucket;
+  days: Record<string, TokenUsageBucket>;
+  fetchedAt: number;
+}
+
+export interface TokenUsageAPI {
+  getReport(month: string): Promise<TokenUsageReport>;
+}
+
 export interface EditorAPI {
   openFile(path: string, line?: number, column?: number): Promise<void>;
   openDiff(
@@ -1271,6 +1294,7 @@ export interface RuntimeAPIs {
   diagnostics?: DiagnosticsAPI;
   clientAuth?: ClientAuthAPI;
   tools: ToolsAPI;
+  tokenUsage: TokenUsageAPI;
   editor?: EditorAPI;
   vscode?: VSCodeAPI;
   worktrees?: WorktreeMetadata[];
