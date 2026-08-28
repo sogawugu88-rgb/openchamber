@@ -146,7 +146,14 @@ export function ComposerFooter(props: ComposerFooterProps) {
                     {metricItems.map((item, index) => (
                         <Tooltip key={`${item}-${index}`}>
                             <TooltipTrigger asChild>
-                                <span className="truncate tabular-nums">{item}</span>
+                                <span
+                                    className="truncate tabular-nums"
+                                    tabIndex={0}
+                                    title={item}
+                                    aria-label={item}
+                                >
+                                    {item}
+                                </span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-[min(80vw,32rem)] break-words">
                                 {item}
