@@ -144,9 +144,10 @@ export const deriveSessionMetrics = (
     metrics.tokens = { input, output, reasoning, cacheRead, cacheWrite };
   }
   const projectedLlmDuration = timing.llmDurationMs;
-  if (hasLlmDuration) metrics.llmDurationMs = llmDurationMs;
-  else if (projectedLlmDuration !== undefined && Number.isFinite(projectedLlmDuration) && projectedLlmDuration >= 0) {
+  if (projectedLlmDuration !== undefined && Number.isFinite(projectedLlmDuration) && projectedLlmDuration >= 0) {
     metrics.llmDurationMs = projectedLlmDuration;
+  } else if (hasLlmDuration) {
+    metrics.llmDurationMs = llmDurationMs;
   }
   if (hasToolDuration) metrics.toolDurationMs = toolDurationMs;
   if (validTtft.length > 0) metrics.ttftMs = validTtft.reduce((sum, value) => sum + value, 0) / validTtft.length;

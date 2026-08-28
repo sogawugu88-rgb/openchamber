@@ -102,4 +102,12 @@ describe('deriveSessionMetrics', () => {
       tokens: { input: 0, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
     });
   });
+
+  test('prefers a valid projected LLM duration over message timestamps', () => {
+    const metrics = deriveSessionMetrics([
+      assistant('timed', { output: 10 }, 'model-a', 1_000, 9_000),
+    ], { llmDurationMs: 1_500 });
+
+    expect(metrics.llmDurationMs).toBe(1_500);
+  });
 });
