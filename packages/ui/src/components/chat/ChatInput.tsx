@@ -18,7 +18,7 @@ import {
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 import * as sessionActions from '@/sync/session-actions';
 import { buildLinkedIssue } from '@/lib/linkedIssues';
-import { useUserMessageHistory } from "@/sync/sync-context";
+import { useSessionMessageRecords, useUserMessageHistory } from "@/sync/sync-context";
 import { getInlineCommentDraftKey, useInlineCommentDraftStore, type InlineCommentDraft, type InlineCommentDraftTarget } from '@/stores/useInlineCommentDraftStore';
 import { useSnippetsStore } from '@/stores/useSnippetsStore';
 import { renderMagicPrompt } from '@/lib/magicPrompts';
@@ -148,6 +148,7 @@ import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
 import { RevertedMessageDock } from './composer/ui/RevertedMessageDock';
 import { SessionSuggestionChip } from '@/components/chat/SessionSuggestionChip';
 import { SessionGoalRow } from '@/components/chat/SessionGoalRow';
+import { deriveSessionMetrics } from './sessionMetrics';
 
 // Lazy like in ChatMessage: a static import would pull the @pierre/diffs and
 // Shiki stacks into the eager startup graph for a dialog opened on demand.
@@ -323,6 +324,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const currentDirectory = useEffectiveDirectory() ?? fallbackDirectory;
     const currentSessionDirectoryForSync = useSessionUIStore(
         React.useCallback((s) => currentSessionId ? s.getDirectoryForSession(currentSessionId) : null, [currentSessionId]),
+    );
+    const sessionMetricMessages = useSessionMessageRecords(
+        currentSessionId ?? '',
+        currentSessionDirectoryForSync ?? currentDirectory,
+    );
+    const sessionMetrics = React.useMemo(
+        () => deriveSessionMetrics(sessionMetricMessages, {}),
+        [sessionMetricMessages],
     );
     // btw mode: the CURRENT session's metadata links an active btw fork and
     // the panel is expanded, so this composer's sends route to the fork
@@ -2877,6 +2886,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         directory={currentSessionDirectoryForSync ?? currentDirectory}
                         newSessionDraftOpen={newSessionDraftOpen}
                         messageLength={message.length}
+                        sessionMetrics={sessionMetrics}
                         radius={chatInputRadius}
                         footerPaddingClass={footerPaddingClass}
                         footerGapClass={footerGapClass}

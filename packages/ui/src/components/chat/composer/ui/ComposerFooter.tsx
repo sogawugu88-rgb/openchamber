@@ -23,6 +23,7 @@ import { ComposerActionButtons } from './ComposerActionButtons';
 import { ComposerAttachmentControls } from './ComposerAttachmentControls';
 import { FocusModeButton } from './FocusModeButton';
 import { PermissionAutoAcceptButton } from './PermissionAutoAcceptButton';
+import type { SessionMetrics } from '../../sessionMetrics';
 
 const MemoModelControls = React.memo(ModelControls);
 const MemoComposerDictation = React.memo(ComposerDictation);
@@ -34,6 +35,7 @@ export interface ComposerFooterProps {
     directory?: string;
     newSessionDraftOpen: boolean;
     messageLength: number;
+    sessionMetrics?: SessionMetrics;
 
     radius: string;
     footerPaddingClass: string;
@@ -76,6 +78,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
         directory,
         newSessionDraftOpen,
         messageLength,
+        sessionMetrics,
         radius: chatInputRadius,
         footerPaddingClass,
         footerGapClass,
@@ -106,6 +109,21 @@ export function ComposerFooter(props: ComposerFooterProps) {
         onDictationContentHeightChange,
     } = props;
 
+    const formatCount = (value: number): string => value.toLocaleString();
+    const formatDuration = (value: number): string => value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
+    const metricItems = sessionMetrics ? [
+        sessionMetrics.model,
+        sessionMetrics.tokens ? `${t('contextSidebar.tokens.input')}: ${formatCount(sessionMetrics.tokens.input)}` : null,
+        sessionMetrics.tokens ? `${t('contextSidebar.tokens.output')}: ${formatCount(sessionMetrics.tokens.output)}` : null,
+        sessionMetrics.tokens ? `${t('contextSidebar.tokens.reasoning')}: ${formatCount(sessionMetrics.tokens.reasoning)}` : null,
+        sessionMetrics.tokens ? `${t('chat.sessionMetrics.cacheTokens')}: ${formatCount(sessionMetrics.tokens.cacheRead + sessionMetrics.tokens.cacheWrite)}` : null,
+        sessionMetrics.llmDurationMs !== undefined ? `${t('chat.sessionMetrics.llm')}: ${formatDuration(sessionMetrics.llmDurationMs)}` : null,
+        sessionMetrics.toolDurationMs !== undefined ? `${t('chat.sessionMetrics.tools')}: ${formatDuration(sessionMetrics.toolDurationMs)}` : null,
+        sessionMetrics.ttftMs !== undefined ? `${t('chat.sessionMetrics.ttft')}: ${formatDuration(sessionMetrics.ttftMs)}` : null,
+        sessionMetrics.cacheHitPercent !== undefined ? `${t('chat.sessionMetrics.cache')}: ${sessionMetrics.cacheHitPercent.toFixed(1)}%` : null,
+        sessionMetrics.outputTokensPerSecond !== undefined ? `${sessionMetrics.outputTokensPerSecond.toFixed(1)} ${t('chat.sessionMetrics.speed')}` : null,
+    ].filter((item): item is string => Boolean(item)) : [];
+
     return (
         <div
             className={cn(
@@ -119,6 +137,12 @@ export function ComposerFooter(props: ComposerFooterProps) {
             }}
             data-chat-input-footer="true"
         >
+            {metricItems.length > 0 ? (
+                <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-1 typography-micro text-muted-foreground/70" data-session-metrics="true">
+                    {metricItems.map((item) => <span key={item} className="truncate tabular-nums">{item}</span>)}
+                </div>
+            ) : null}
+            <div className={cn('flex w-full items-center', isMobile ? 'gap-x-1.5' : cn('justify-between', footerGapClass))}>
             {isMobile ? (
                 <>
                     <div className="flex w-full items-center justify-between gap-x-1.5">
@@ -255,6 +279,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                     </div>
                 </>
             )}
+            </div>
         </div>
     );
 }
