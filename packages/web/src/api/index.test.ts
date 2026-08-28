@@ -44,4 +44,28 @@ describe('web token usage API', () => {
 
     await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
   });
+
+  it('rejects a report with a malformed today date', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, today: { ...report.today, date: '2026-8-27' } }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
+
+  it('rejects a report with a malformed daily date key', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, days: { '2026-8-01': report.total } }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
+
+  it('rejects a daily date key outside the report month', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, days: { '2026-07-31': report.total } }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
+
+  it('rejects a report whose month differs from the requested month', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, month: '2026-07' }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
 });

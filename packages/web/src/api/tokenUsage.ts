@@ -3,6 +3,7 @@ import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
 
 type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 interface JsonObject {
   [key: string]: JsonValue;
 }
@@ -10,6 +11,16 @@ interface JsonObject {
 const isPlainObject = (value: JsonValue): value is JsonObject => value !== null && !Array.isArray(value) && value.constructor === Object;
 const isString = (value: JsonValue): value is string => value !== null && value === String(value);
 const isFiniteNumber = (value: JsonValue): value is number => value !== null && value === Number(value) && Number.isFinite(value);
+
+const isValidDateKey = (value: string, expectedMonth?: string): boolean => {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) return false;
+  const month = `${match[1]}-${match[2]}`;
+  if (!MONTH_PATTERN.test(month) || (expectedMonth !== undefined && month !== expectedMonth)) return false;
+  const day = Number(match[3]);
+  const daysInMonth = new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate();
+  return day >= 1 && day <= daysInMonth;
+};
 
 const parseBucket = (value: JsonValue): TokenUsageReport['total'] | null => {
   if (!isPlainObject(value)) return null;
@@ -25,13 +36,13 @@ const parseBucket = (value: JsonValue): TokenUsageReport['total'] | null => {
   };
 };
 
-const parseTokenUsageReport = (body: string): TokenUsageReport => {
+const parseTokenUsageReport = (body: string, requestedMonth?: string): TokenUsageReport => {
   const value: JsonValue = JSON.parse(body);
-  if (!isPlainObject(value) || !isString(value.timezone) || !isString(value.month) || !MONTH_PATTERN.test(value.month) || !isFiniteNumber(value.fetchedAt)) {
+  if (!isPlainObject(value) || !isString(value.timezone) || !isString(value.month) || !MONTH_PATTERN.test(value.month) || (requestedMonth !== undefined && value.month !== requestedMonth) || !isFiniteNumber(value.fetchedAt)) {
     throw new Error('Token usage API returned invalid data format');
   }
   const todayValue = value.today;
-  const todayDate = isPlainObject(todayValue) && isString(todayValue.date) ? todayValue.date : null;
+  const todayDate = isPlainObject(todayValue) && isString(todayValue.date) && isValidDateKey(todayValue.date) ? todayValue.date : null;
   const today = todayDate === null ? null : parseBucket(todayValue);
   const currentMonth = parseBucket(value.currentMonth);
   const total = parseBucket(value.total);
@@ -40,6 +51,7 @@ const parseTokenUsageReport = (body: string): TokenUsageReport => {
   }
   const days: TokenUsageReport['days'] = {};
   for (const [date, bucket] of Object.entries(value.days)) {
+    if (!isValidDateKey(date, value.month)) throw new Error('Token usage API returned invalid data format');
     const parsedBucket = parseBucket(bucket);
     if (!parsedBucket) throw new Error('Token usage API returned invalid data format');
     days[date] = parsedBucket;
@@ -71,6 +83,6 @@ export const createWebTokenUsageAPI = (fetchRuntime: typeof runtimeFetch = runti
       }
       throw new Error(message);
     }
-    return parseTokenUsageReport(body);
+    return parseTokenUsageReport(body, month);
   },
 });
