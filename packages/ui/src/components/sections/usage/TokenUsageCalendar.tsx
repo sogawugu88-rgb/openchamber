@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { buildMonthCalendar, formatTokenCount, getBucketTotal, getUsageIntensity } from './tokenUsage';
 
 interface TokenUsageCalendarProps {
-  month: string;
+  month: string | null;
   report: TokenUsageReport | null;
   loading: boolean;
   onMonthChange: (offset: number) => void;
@@ -42,11 +42,11 @@ export const TokenUsageCalendar: React.FC<TokenUsageCalendarProps> = ({
   error,
 }) => {
   const { t } = useI18n();
-  const cells = buildMonthCalendar(month);
+  const cells = month ? buildMonthCalendar(month) : [];
   const maximum = Math.max(...Object.values(report?.days ?? {}).map(getBucketTotal), 0);
-  const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(`${month}-01T00:00:00Z`),
-  );
+  const monthLabel = month
+    ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`))
+    : t('settings.usage.tokenUsage.loading');
 
   return (
     <section className="space-y-5 border-t border-border/60 py-8" data-settings-item="usage.token-calendar">
@@ -56,11 +56,11 @@ export const TokenUsageCalendar: React.FC<TokenUsageCalendarProps> = ({
           <p className="typography-settings-description text-muted-foreground">{t('settings.usage.tokenUsage.timezone', { timezone: report?.timezone ?? 'UTC' })}</p>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => onMonthChange(-1)} aria-label={t('settings.usage.tokenUsage.previousMonth')} title={t('settings.usage.tokenUsage.previousMonth')}>
+          <Button variant="ghost" size="icon" disabled={!month} onClick={() => onMonthChange(-1)} aria-label={t('settings.usage.tokenUsage.previousMonth')} title={t('settings.usage.tokenUsage.previousMonth')}>
             <Icon name="arrow-left-s" className="size-4" />
           </Button>
           <span className="min-w-32 text-center typography-ui-label text-foreground">{monthLabel}</span>
-          <Button variant="ghost" size="icon" onClick={() => onMonthChange(1)} aria-label={t('settings.usage.tokenUsage.nextMonth')} title={t('settings.usage.tokenUsage.nextMonth')}>
+          <Button variant="ghost" size="icon" disabled={!month} onClick={() => onMonthChange(1)} aria-label={t('settings.usage.tokenUsage.nextMonth')} title={t('settings.usage.tokenUsage.nextMonth')}>
             <Icon name="arrow-right-s" className="size-4" />
           </Button>
         </div>

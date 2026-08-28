@@ -2,6 +2,7 @@ import type { TokenUsageAPI, TokenUsageReport } from '@openchamber/ui/lib/api/ty
 import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
 
 type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 interface JsonObject {
   [key: string]: JsonValue;
 }
@@ -26,7 +27,7 @@ const parseBucket = (value: JsonValue): TokenUsageReport['total'] | null => {
 
 const parseTokenUsageReport = (body: string): TokenUsageReport => {
   const value: JsonValue = JSON.parse(body);
-  if (!isPlainObject(value) || !isString(value.timezone) || !isString(value.month) || !isFiniteNumber(value.fetchedAt)) {
+  if (!isPlainObject(value) || !isString(value.timezone) || !isString(value.month) || !MONTH_PATTERN.test(value.month) || !isFiniteNumber(value.fetchedAt)) {
     throw new Error('Token usage API returned invalid data format');
   }
   const todayValue = value.today;
@@ -55,8 +56,10 @@ const parseTokenUsageReport = (body: string): TokenUsageReport => {
 };
 
 export const createWebTokenUsageAPI = (fetchRuntime: typeof runtimeFetch = runtimeFetch): TokenUsageAPI => ({
-  async getReport(month: string): Promise<TokenUsageReport> {
-    const response = await fetchRuntime('/api/openchamber/token-usage', { query: { month } });
+  async getReport(month?: string): Promise<TokenUsageReport> {
+    const response = month === undefined
+      ? await fetchRuntime('/api/openchamber/token-usage')
+      : await fetchRuntime('/api/openchamber/token-usage', { query: { month } });
     const body = await response.text();
     if (!response.ok) {
       let message = `Token usage API returned ${response.status} ${response.statusText}`;

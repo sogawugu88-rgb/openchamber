@@ -28,8 +28,19 @@ describe('web token usage API', () => {
     expect(mockRuntimeFetch).toHaveBeenCalledWith('/api/openchamber/token-usage', { query: { month: '2026-08' } });
   });
 
+  it('requests the server default month when no month is selected', async () => {
+    await expect(runtimeAPIs.tokenUsage.getReport()).resolves.toEqual(report);
+    expect(mockRuntimeFetch).toHaveBeenCalledWith('/api/openchamber/token-usage');
+  });
+
   it('rejects a successful response with a null or malformed report', async () => {
     mockRuntimeFetch.mockResolvedValueOnce(new Response('null', { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
+
+  it('rejects a successful response with a malformed report month', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, month: '2026-8' }), { status: 200 }));
 
     await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
   });

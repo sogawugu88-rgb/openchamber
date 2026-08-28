@@ -22,7 +22,7 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useAllSessionStatuses } from '@/sync/sync-context';
 import type { TokenUsageReport } from '@/lib/api/types';
-import { getInitialMonthKey, getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent } from './tokenUsage';
+import { getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent } from './tokenUsage';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -47,7 +47,7 @@ export const UsagePage: React.FC = () => {
   const { tokenUsage } = useRuntimeAPIs();
   const runtimeKey = getRuntimeKey();
   const sessionStatuses = useAllSessionStatuses();
-  const [tokenMonth, setTokenMonth] = React.useState(() => getInitialMonthKey(new Date()));
+  const [tokenMonth, setTokenMonth] = React.useState<string | null>(null);
   const [tokenReport, setTokenReport] = React.useState<{ runtimeKey: string; report: TokenUsageReport } | null>(null);
   const [tokenLoading, setTokenLoading] = React.useState(true);
   const [tokenError, setTokenError] = React.useState<string | null>(null);
@@ -59,14 +59,16 @@ export const UsagePage: React.FC = () => {
     const requestId = ++tokenRequestRef.current;
     setTokenLoading(true);
     setTokenError(null);
-    void tokenUsage.getReport(tokenMonth)
+    const requestedMonth = tokenMonth;
+    void tokenUsage.getReport(requestedMonth ?? undefined)
       .then((report) => {
         if (requestId !== tokenRequestRef.current) return;
-        if (report.month !== tokenMonth) {
+        if (requestedMonth !== null && report.month !== requestedMonth) {
           setTokenReport(null);
           setTokenMonth(report.month);
           return;
         }
+        setTokenMonth(report.month);
         setTokenReport({ runtimeKey, report });
       })
       .catch((cause: unknown) => {
@@ -97,7 +99,7 @@ export const UsagePage: React.FC = () => {
     });
   }, [loadTokenUsage, sessionStatuses]);
 
-  const visibleTokenReport = tokenReport && isTokenUsageReportCurrent(tokenReport.report, tokenReport.runtimeKey, tokenMonth, runtimeKey)
+  const visibleTokenReport = tokenReport && tokenMonth && isTokenUsageReportCurrent(tokenReport.report, tokenReport.runtimeKey, tokenMonth, runtimeKey)
     ? tokenReport.report
     : null;
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
@@ -218,7 +220,7 @@ export const UsagePage: React.FC = () => {
       loading={tokenLoading}
       error={tokenError}
       onRetry={loadTokenUsage}
-      onMonthChange={(offset) => setTokenMonth((current) => getMonthKey(current, offset))}
+      onMonthChange={(offset) => setTokenMonth((current) => current ? getMonthKey(current, offset) : current)}
     />
   );
 

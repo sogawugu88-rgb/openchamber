@@ -810,7 +810,7 @@ export interface TokenUsageReport {
 }
 
 export interface TokenUsageAPI {
-  getReport(month: string): Promise<TokenUsageReport>;
+  getReport(month?: string): Promise<TokenUsageReport>;
 }
 
 export interface EditorAPI {

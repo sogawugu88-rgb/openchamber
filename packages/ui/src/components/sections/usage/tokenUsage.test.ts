@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildMonthCalendar,
   formatTokenCount,
-  getInitialMonthKey,
   getMonthKey,
   isTokenUsageReportCurrent,
   getUsageIntensity,
@@ -67,12 +66,6 @@ describe('token usage helpers', () => {
     expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-01', 'runtime-a')).toBe(true);
     expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-02', 'runtime-a')).toBe(false);
     expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-01', 'runtime-b')).toBe(false);
-  });
-
-  test('uses local calendar fields for the initial month', () => {
-    const localDate = new Date(2026, 0, 1, 0, 30);
-
-    expect(getInitialMonthKey(localDate)).toBe('2026-01');
   });
 
   test('recognizes busy and retry transitions into idle or error as settled', () => {
