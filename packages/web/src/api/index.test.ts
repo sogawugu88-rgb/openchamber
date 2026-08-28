@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TokenUsageReport, RuntimeAPIs } from '@openchamber/ui/lib/api/types';
+import type { RuntimeFetchOptions } from '@openchamber/ui/lib/runtime-fetch';
 
 import { createWebAPIs } from './index';
 
@@ -13,14 +14,23 @@ const report: TokenUsageReport = {
   fetchedAt: 1,
 };
 
-vi.mock('@openchamber/ui/lib/runtime-fetch', () => ({
-  runtimeFetch: vi.fn(async () => new Response(JSON.stringify(report), { status: 200 })),
-}));
+const mockRuntimeFetch = vi.fn(async (_input: string | URL | Request, _init?: RuntimeFetchOptions) => new Response(JSON.stringify(report), { status: 200 }));
 
-const runtimeAPIs: RuntimeAPIs = createWebAPIs();
+const runtimeAPIs: RuntimeAPIs = createWebAPIs({ runtimeFetch: mockRuntimeFetch });
+
+beforeEach(() => {
+  mockRuntimeFetch.mockClear();
+});
 
 describe('web token usage API', () => {
   it('composes a typed token usage API that fetches the OpenChamber route', async () => {
     await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).resolves.toEqual(report);
+    expect(mockRuntimeFetch).toHaveBeenCalledWith('/api/openchamber/token-usage', { query: { month: '2026-08' } });
+  });
+
+  it('rejects a successful response with a null or malformed report', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response('null', { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
   });
 });
