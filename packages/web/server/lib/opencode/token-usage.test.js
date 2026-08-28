@@ -30,8 +30,9 @@ const assistant = ({ sessionID, id, completed, created, providerID, modelID, ste
 
 const createService = (responses, timezone = 'UTC') => {
   const openCodeFetch = vi.fn(async (path) => {
-    if (!(path in responses)) throw new Error(`Unexpected path: ${path}`);
-    return responses[path];
+    const [basePath] = path.split('?');
+    if (!(basePath in responses)) throw new Error(`Unexpected path: ${path}`);
+    return responses[basePath];
   });
   return {
     service: createTokenUsageService({
@@ -178,6 +179,63 @@ describe('token usage service', () => {
       currentMonth: bucket(),
       days: {},
     });
+  });
+
+  it('follows session and message cursors when OpenCode returns paginated data', async () => {
+    const openCodeFetch = vi.fn(async (path) => {
+      const url = new URL(path, 'http://opencode.test');
+      const cursor = url.searchParams.get('cursor');
+      if (url.pathname === '/session') {
+        return cursor
+          ? { data: [{ id: 'session-2' }], nextCursor: null }
+          : { data: [{ id: 'session-1' }], nextCursor: 'session-page-2' };
+      }
+      if (url.pathname === '/session/session-1/message') {
+        return cursor
+          ? { data: [assistant({ sessionID: 'session-1', id: 'message-2', completed: '2026-08-02T10:00:00Z', tokens: { output: 2 } })], nextCursor: null }
+          : { data: [assistant({ sessionID: 'session-1', id: 'message-1', completed: '2026-08-01T10:00:00Z', tokens: { input: 1 } })], nextCursor: 'message-page-2' };
+      }
+      if (url.pathname === '/session/session-2/message') {
+        return { data: [], nextCursor: null };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    const service = createTokenUsageService({
+      openCodeFetch,
+      getServerTimezone: () => 'UTC',
+    });
+
+    await expect(service.getReport({ month: '2026-08' })).resolves.toMatchObject({
+      total: bucket({ input: 1, output: 2, total: 3 }),
+      days: {
+        '2026-08-01': bucket({ input: 1, total: 1 }),
+        '2026-08-02': bucket({ output: 2, total: 2 }),
+      },
+    });
+    expect(openCodeFetch.mock.calls.map(([path]) => path)).toEqual([
+      '/session',
+      '/session?cursor=session-page-2',
+      '/session/session-1/message',
+      '/session/session-1/message?cursor=message-page-2',
+      '/session/session-2/message',
+    ]);
+  });
+
+  it('rejects malformed pagination metadata and unbounded pagination', async () => {
+    const malformed = createTokenUsageService({
+      openCodeFetch: vi.fn(async () => ({ data: [], nextCursor: undefined })),
+      getServerTimezone: () => 'UTC',
+    });
+    await expect(malformed.getReport({ month: '2026-08' })).rejects.toThrow(/cursor/i);
+
+    let page = 0;
+    const unbounded = createTokenUsageService({
+      openCodeFetch: vi.fn(async () => page++ < 1_001
+        ? { data: [], nextCursor: `page-${page}` }
+        : []),
+      getServerTimezone: () => 'UTC',
+    });
+    await expect(unbounded.getReport({ month: '2026-08' })).rejects.toThrow(/pagination/i);
   });
 
   it('rejects fetch failures and malformed source records', async () => {

@@ -6,6 +6,7 @@ const EMPTY_BUCKET = Object.freeze({
   cacheWrite: 0,
   total: 0,
 });
+const MAX_PAGINATION_PAGES = 1000;
 
 const createBucket = () => ({ ...EMPTY_BUCKET });
 
@@ -73,9 +74,33 @@ const localDate = (timestamp, timezone) => new Intl.DateTimeFormat('en-CA', {
 
 const currentLocalDate = (timezone) => localDate(Date.now(), timezone);
 
-const assertArray = (value, label) => {
-  if (!Array.isArray(value)) throw new Error(`Malformed OpenCode ${label} response`);
-  return value;
+const fetchAllPages = async (openCodeFetch, path, label) => {
+  const records = [];
+  let cursor;
+  const cursors = new Set();
+  let pageCount = 0;
+
+  do {
+    pageCount += 1;
+    if (pageCount > MAX_PAGINATION_PAGES) throw new Error(`OpenCode ${label} pagination limit exceeded`);
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const response = await openCodeFetch(`${path}${query}`);
+    const isPage = response?.constructor === Object && 'data' in response && 'nextCursor' in response;
+    const data = Array.isArray(response) ? response : isPage ? response.data : null;
+    if (!Array.isArray(data)) throw new Error(`Malformed OpenCode ${label} response`);
+    records.push(...data);
+
+    const nextCursor = isPage ? response.nextCursor : null;
+    if (nextCursor !== null && nextCursor?.constructor !== String) {
+      throw new Error(`Malformed OpenCode ${label} cursor`);
+    }
+    if (!nextCursor) break;
+    if (cursors.has(nextCursor)) throw new Error(`Malformed OpenCode ${label} cursor`);
+    cursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+
+  return records;
 };
 
 export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) => {
@@ -85,7 +110,7 @@ export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) =>
     }
 
     const timezone = getServerTimezone();
-    const sessions = assertArray(await openCodeFetch('/session'), 'session list');
+    const sessions = await fetchAllPages(openCodeFetch, '/session', 'session list');
     const samples = [];
     const seen = new Set();
 
@@ -94,8 +119,9 @@ export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) =>
       if (session?.constructor !== Object || !sessionID) {
         throw new Error('Malformed OpenCode session record');
       }
-      const messages = assertArray(
-        await openCodeFetch(`/session/${encodeURIComponent(sessionID)}/message`),
+      const messages = await fetchAllPages(
+        openCodeFetch,
+        `/session/${encodeURIComponent(sessionID)}/message`,
         'message list',
       );
       for (const record of messages) {

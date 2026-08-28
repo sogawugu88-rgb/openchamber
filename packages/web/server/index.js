@@ -1421,7 +1421,10 @@ const tokenUsageService = createTokenUsageService({
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`OpenCode GET ${fetchPath} failed with ${response.status}`);
-    return response.json();
+    return {
+      data: await response.json(),
+      nextCursor: response.headers.get('x-next-cursor') || null,
+    };
   },
   getServerTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
 });
