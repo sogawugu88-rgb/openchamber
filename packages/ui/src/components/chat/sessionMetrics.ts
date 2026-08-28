@@ -1,5 +1,6 @@
-import type { Message } from '@opencode-ai/sdk/v2';
+import type { Message, Part } from '@opencode-ai/sdk/v2';
 import { deriveMessageRole } from './message/messageRole';
+import { extractTokensFromMessage } from '@/stores/utils/tokenUtils';
 
 type TokenCache = { read?: number; write?: number };
 type TokenPayload = {
@@ -8,16 +9,17 @@ type TokenPayload = {
   reasoning?: number;
   cache?: TokenCache;
 };
+type TokenValue = number | TokenPayload;
 type MessageTime = { created?: number; completed?: number };
 type PartTime = { start?: number; end?: number };
-type SessionMetricPart = { type: string; tokens?: TokenPayload; time?: PartTime & { created?: number } };
+type SessionMetricPart = { type: string; tokens?: TokenValue; time?: PartTime & { created?: number } };
 
 export type SessionMessageRecord = {
   info: Pick<Message, 'id'> & {
     role?: Message['role'];
     clientRole?: string;
     modelID?: string;
-    tokens?: TokenPayload;
+    tokens?: TokenValue;
     time?: MessageTime;
   };
   parts: SessionMetricPart[];
@@ -34,6 +36,7 @@ export type SessionMetrics = {
   steps: number;
   model?: string;
   tokens?: {
+    total?: number;
     input: number;
     output: number;
     reasoning: number;
@@ -52,12 +55,14 @@ const finiteNonNegative = (value: number | undefined): number => {
   return value;
 };
 
-const readTokens = (record: SessionMessageRecord): TokenPayload | null => {
+const readTokens = (record: SessionMessageRecord): TokenValue | null => {
   const direct = record.info.tokens;
-  if (direct) return direct;
+  if (direct !== undefined) return direct;
   const part = record.parts.find((entry) => entry.tokens !== undefined)?.tokens;
   return part ?? null;
 };
+
+const isNumericTokenValue = (value: TokenValue): value is number => value === Number(value);
 
 const completeDuration = (start: number | undefined, end: number | undefined): number | null => {
   if (start === undefined || end === undefined || !Number.isFinite(start) || !Number.isFinite(end) || end < start) {
@@ -78,6 +83,8 @@ export const deriveSessionMetrics = (
   let reasoning = 0;
   let cacheRead = 0;
   let cacheWrite = 0;
+  let total = 0;
+  let hasTotal = false;
   let llmDurationMs = 0;
   let toolDurationMs = 0;
   let hasLlmDuration = false;
@@ -99,7 +106,13 @@ export const deriveSessionMetrics = (
     steps += 1;
     model = record.info.modelID?.trim() || model;
     const tokens = readTokens(record);
-    if (tokens) {
+    if (tokens !== null && isNumericTokenValue(tokens)) {
+      // SAFETY: the record shape is narrowed above; the token utility only
+      // reads info.tokens and parts[].tokens from this message projection.
+      const extractedTotal = extractTokensFromMessage({ info: record.info as Message, parts: record.parts as Part[] });
+      total += finiteNonNegative(extractedTotal);
+      hasTotal = true;
+    } else if (tokens) {
       input += finiteNonNegative(tokens.input);
       output += finiteNonNegative(tokens.output);
       reasoning += finiteNonNegative(tokens.reasoning);
@@ -140,8 +153,16 @@ export const deriveSessionMetrics = (
   const decodeSeconds = timing.decodeSeconds ?? derivedDecodeSeconds;
   const metrics: SessionMetrics = { turns, steps };
   if (model) metrics.model = model;
-  if (steps > 0 && (input + output + reasoning + cacheRead + cacheWrite > 0)) {
-    metrics.tokens = { input, output, reasoning, cacheRead, cacheWrite };
+  if (steps > 0 && (hasTotal || input + output + reasoning + cacheRead + cacheWrite > 0)) {
+    const tokenMetrics: NonNullable<SessionMetrics['tokens']> = {
+      input,
+      output,
+      reasoning,
+      cacheRead,
+      cacheWrite,
+    };
+    if (hasTotal) tokenMetrics.total = total;
+    metrics.tokens = tokenMetrics;
   }
   const projectedLlmDuration = timing.llmDurationMs;
   // The activity projection is latest-turn-only, so it is authoritative only
@@ -153,7 +174,7 @@ export const deriveSessionMetrics = (
   }
   if (hasToolDuration) metrics.toolDurationMs = toolDurationMs;
   if (validTtft.length > 0) metrics.ttftMs = validTtft.reduce((sum, value) => sum + value, 0) / validTtft.length;
-  if (totalInput > 0 && cacheRead > 0) metrics.cacheHitPercent = (cacheRead / totalInput) * 100;
+  if (totalInput > 0) metrics.cacheHitPercent = (cacheRead / totalInput) * 100;
   if (output > 0 && Number.isFinite(decodeSeconds) && decodeSeconds > 0) {
     metrics.outputTokensPerSecond = output / decodeSeconds;
   }

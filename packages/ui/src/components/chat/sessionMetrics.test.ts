@@ -119,4 +119,27 @@ describe('deriveSessionMetrics', () => {
 
     expect(metrics.llmDurationMs).toBe(7_000);
   });
+
+  test('supports numeric token payloads as total-only token metrics', () => {
+    // SAFETY: this fixture intentionally models the legacy numeric token wire shape.
+    const numericMessage = {
+      info: { id: 'numeric', role: 'assistant', modelID: 'model-a', tokens: 123 },
+      parts: [],
+    } as SessionMessageRecord;
+
+    expect(deriveSessionMetrics([numericMessage], {})).toEqual({
+      turns: 0,
+      steps: 1,
+      model: 'model-a',
+      tokens: { total: 123, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    });
+  });
+
+  test('reports zero cache hit when positive input has no cache reads', () => {
+    const metrics = deriveSessionMetrics([
+      assistant('no-cache', { input: 100, output: 5, cache: { read: 0, write: 0 } }),
+    ], {});
+
+    expect(metrics.cacheHitPercent).toBe(0);
+  });
 });

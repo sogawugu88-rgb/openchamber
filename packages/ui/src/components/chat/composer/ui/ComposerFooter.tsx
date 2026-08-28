@@ -115,6 +115,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
         sessionMetrics.model,
         sessionMetrics.turns > 0 ? `${t('chat.sessionMetrics.turns')}: ${formatCount(sessionMetrics.turns)}` : null,
         sessionMetrics.steps > 0 ? `${t('chat.sessionMetrics.steps')}: ${formatCount(sessionMetrics.steps)}` : null,
+        sessionMetrics.tokens?.total !== undefined ? `${t('chat.sessionMetrics.tokens')}: ${formatCount(sessionMetrics.tokens.total)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.input')}: ${formatCount(sessionMetrics.tokens.input)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.output')}: ${formatCount(sessionMetrics.tokens.output)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.reasoning')}: ${formatCount(sessionMetrics.tokens.reasoning)}` : null,
