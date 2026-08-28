@@ -8,6 +8,7 @@ import {
   hasSettledUsageTransition,
   createTokenUsageRequestCoordinator,
   shouldReloadTokenUsageMonth,
+  isTokenUsageRequestCurrent,
 } from './tokenUsage';
 import type { TokenUsageReport } from '@/lib/api/types';
 
@@ -95,11 +96,40 @@ describe('token usage helpers', () => {
     resolveRequest?.();
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
     expect(requestCount).toBe(2);
   });
 
   test('does not reload after adopting the month from the initial server-default report', () => {
     expect(shouldReloadTokenUsageMonth(null, '2026-08')).toBe(false);
     expect(shouldReloadTokenUsageMonth('2026-07', '2026-08')).toBe(true);
+  });
+
+  test('rejects a response after the selected month or runtime generation changes', () => {
+    expect(isTokenUsageRequestCurrent(4, 4, 'runtime-a', 'runtime-a', '2026-08', '2026-08')).toBe(true);
+    expect(isTokenUsageRequestCurrent(4, 5, 'runtime-a', 'runtime-a', '2026-08', '2026-08')).toBe(false);
+    expect(isTokenUsageRequestCurrent(4, 4, 'runtime-a', 'runtime-b', '2026-08', '2026-08')).toBe(false);
+    expect(isTokenUsageRequestCurrent(4, 4, 'runtime-a', 'runtime-a', '2026-07', '2026-08')).toBe(false);
+  });
+
+  test('continues after a rejected coordinated request without leaking a promise rejection', async () => {
+    let requestCount = 0;
+    const coordinator = createTokenUsageRequestCoordinator(async () => {
+      requestCount += 1;
+      throw new Error('request failed');
+    });
+
+    coordinator.request();
+    await Promise.resolve();
+    await Promise.resolve();
+    coordinator.request();
+    await Promise.resolve();
+    expect(requestCount).toBe(2);
+  });
+
+  test('does not accept a response from an older month or runtime request', () => {
+    expect(isTokenUsageRequestCurrent(4, 5, 'runtime-a', 'runtime-a', '2026-08', '2026-08')).toBe(false);
+    expect(isTokenUsageRequestCurrent(4, 4, 'runtime-a', 'runtime-b', '2026-08', '2026-08')).toBe(false);
+    expect(isTokenUsageRequestCurrent(4, 4, 'runtime-a', 'runtime-a', '2026-07', '2026-08')).toBe(false);
   });
 });

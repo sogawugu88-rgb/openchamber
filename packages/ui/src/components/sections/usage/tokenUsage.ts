@@ -50,6 +50,17 @@ export const hasSettledUsageTransition = (previousType: string | undefined, curr
 export const shouldReloadTokenUsageMonth = (requestedMonth: string | null, reportMonth: string): boolean =>
   requestedMonth !== null && requestedMonth !== reportMonth;
 
+export const isTokenUsageRequestCurrent = (
+  requestId: number,
+  currentRequestId: number,
+  requestRuntimeKey: string,
+  currentRuntimeKey: string,
+  requestedMonth: string | null,
+  currentMonth: string | null,
+): boolean => requestId === currentRequestId
+  && requestRuntimeKey === currentRuntimeKey
+  && requestedMonth === currentMonth;
+
 export const createTokenUsageRequestCoordinator = (run: () => Promise<void>) => {
   let inFlight = false;
   let pending = false;
@@ -60,7 +71,7 @@ export const createTokenUsageRequestCoordinator = (run: () => Promise<void>) => 
       return;
     }
     inFlight = true;
-    void run().finally(() => {
+    void run().catch(() => {}).finally(() => {
       inFlight = false;
       if (!pending) return;
       pending = false;
