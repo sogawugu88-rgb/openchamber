@@ -24,6 +24,7 @@ import { ComposerAttachmentControls } from './ComposerAttachmentControls';
 import { FocusModeButton } from './FocusModeButton';
 import { PermissionAutoAcceptButton } from './PermissionAutoAcceptButton';
 import type { SessionMetrics } from '../../sessionMetrics';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const MemoModelControls = React.memo(ModelControls);
 const MemoComposerDictation = React.memo(ComposerDictation);
@@ -142,7 +143,16 @@ export function ComposerFooter(props: ComposerFooterProps) {
         >
             {metricItems.length > 0 ? (
                 <div className="mb-1 flex w-full min-w-0 flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-1 typography-micro text-muted-foreground/70" data-session-metrics="true">
-                    {metricItems.map((item) => <span key={item} className="truncate tabular-nums">{item}</span>)}
+                    {metricItems.map((item, index) => (
+                        <Tooltip key={`${item}-${index}`}>
+                            <TooltipTrigger asChild>
+                                <span className="truncate tabular-nums">{item}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[min(80vw,32rem)] break-words">
+                                {item}
+                            </TooltipContent>
+                        </Tooltip>
+                    ))}
                 </div>
             ) : null}
             <div className={cn('flex w-full items-center', isMobile ? 'gap-x-1.5' : cn('justify-between', footerGapClass))}>
