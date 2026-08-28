@@ -1494,6 +1494,8 @@ export const dict = {
   'contextSidebar.breakdown.other': 'Other',
   'contextSidebar.stats.messages': 'Messages',
   'chat.sessionMetrics.tokens': 'Tokens',
+  'chat.sessionMetrics.turns': 'Turns',
+  'chat.sessionMetrics.steps': 'Steps',
   'chat.sessionMetrics.cacheTokens': 'Cache',
   'chat.sessionMetrics.llm': 'LLM',
   'chat.sessionMetrics.tools': 'Tools',

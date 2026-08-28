@@ -1496,6 +1496,8 @@ export const dict: Record<I18nKey, string> = {
   'contextSidebar.breakdown.other': '기타',
   'contextSidebar.stats.messages': '메시지',
   'chat.sessionMetrics.tokens': '토큰',
+  'chat.sessionMetrics.turns': '턴',
+  'chat.sessionMetrics.steps': '단계',
   'chat.sessionMetrics.cacheTokens': '캐시',
   'chat.sessionMetrics.llm': 'LLM',
   'chat.sessionMetrics.tools': '도구',

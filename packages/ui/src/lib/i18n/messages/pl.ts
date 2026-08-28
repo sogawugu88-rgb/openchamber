@@ -1693,6 +1693,8 @@ export const dict: Record<I18nKey, string> = {
   'contextSidebar.stats.cost': 'Koszt',
   'contextSidebar.stats.messages': 'Wiadomości',
   'chat.sessionMetrics.tokens': 'Tokeny',
+  'chat.sessionMetrics.turns': 'Tury',
+  'chat.sessionMetrics.steps': 'Kroki',
   'chat.sessionMetrics.cacheTokens': 'Cache',
   'chat.sessionMetrics.llm': 'LLM',
   'chat.sessionMetrics.tools': 'Narzędzia',

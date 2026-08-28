@@ -113,6 +113,8 @@ export function ComposerFooter(props: ComposerFooterProps) {
     const formatDuration = (value: number): string => value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
     const metricItems = sessionMetrics ? [
         sessionMetrics.model,
+        sessionMetrics.turns > 0 ? `${t('chat.sessionMetrics.turns')}: ${formatCount(sessionMetrics.turns)}` : null,
+        sessionMetrics.steps > 0 ? `${t('chat.sessionMetrics.steps')}: ${formatCount(sessionMetrics.steps)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.input')}: ${formatCount(sessionMetrics.tokens.input)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.output')}: ${formatCount(sessionMetrics.tokens.output)}` : null,
         sessionMetrics.tokens ? `${t('contextSidebar.tokens.reasoning')}: ${formatCount(sessionMetrics.tokens.reasoning)}` : null,
@@ -127,9 +129,9 @@ export function ComposerFooter(props: ComposerFooterProps) {
     return (
         <div
             className={cn(
-                'bg-transparent flex-shrink-0',
+                'bg-transparent flex w-full flex-shrink-0 flex-col',
                 footerPaddingClass,
-                isMobile ? 'flex items-center gap-x-1.5' : cn('flex items-center justify-between', footerGapClass)
+                footerGapClass,
             )}
             style={{
                 borderBottomLeftRadius: chatInputRadius,
@@ -138,7 +140,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
             data-chat-input-footer="true"
         >
             {metricItems.length > 0 ? (
-                <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-1 typography-micro text-muted-foreground/70" data-session-metrics="true">
+                <div className="mb-1 flex w-full min-w-0 flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-1 typography-micro text-muted-foreground/70" data-session-metrics="true">
                     {metricItems.map((item) => <span key={item} className="truncate tabular-nums">{item}</span>)}
                 </div>
             ) : null}

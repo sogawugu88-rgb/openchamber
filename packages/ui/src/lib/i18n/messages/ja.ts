@@ -1490,6 +1490,8 @@ export const dict: Record<I18nKey, string> = {
   'contextSidebar.breakdown.other': 'その他',
   'contextSidebar.stats.messages': 'メッセージ',
   'chat.sessionMetrics.tokens': 'トークン',
+  'chat.sessionMetrics.turns': 'ターン',
+  'chat.sessionMetrics.steps': 'ステップ',
   'chat.sessionMetrics.cacheTokens': 'キャッシュ',
   'chat.sessionMetrics.llm': 'LLM',
   'chat.sessionMetrics.tools': 'ツール',

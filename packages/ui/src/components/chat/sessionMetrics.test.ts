@@ -70,4 +70,36 @@ describe('deriveSessionMetrics', () => {
     });
     expect(deriveSessionMetrics([], {})).toEqual({ turns: 0, steps: 0 });
   });
+
+  test('omits speed when output tokens exist but decode duration is absent', () => {
+    expect(deriveSessionMetrics([
+      assistant('output-only', { output: 25 }),
+    ], {})).toEqual({
+      turns: 0,
+      steps: 1,
+      model: 'claude-sonnet',
+      tokens: { input: 0, output: 25, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+      llmDurationMs: 2_000,
+    });
+  });
+
+  test('uses compatible client roles when the server role is absent', () => {
+    // SAFETY: this fixture intentionally models the wire shape with no server role.
+    const userMessage = {
+      info: { id: 'wire-user', clientRole: 'user', time: { created: 500 } },
+      parts: [],
+    } as SessionMessageRecord;
+    // SAFETY: this fixture intentionally models the wire shape with no server role.
+    const assistantMessage = {
+      info: { id: 'wire-assistant', clientRole: 'assistant', modelID: 'model-a', tokens: { output: 5 } },
+      parts: [],
+    } as SessionMessageRecord;
+
+    expect(deriveSessionMetrics([userMessage, assistantMessage], {})).toEqual({
+      turns: 1,
+      steps: 1,
+      model: 'model-a',
+      tokens: { input: 0, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    });
+  });
 });

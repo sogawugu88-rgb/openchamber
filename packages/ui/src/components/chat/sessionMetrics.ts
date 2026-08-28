@@ -1,4 +1,5 @@
 import type { Message } from '@opencode-ai/sdk/v2';
+import { deriveMessageRole } from './message/messageRole';
 
 type TokenCache = { read?: number; write?: number };
 type TokenPayload = {
@@ -12,7 +13,9 @@ type PartTime = { start?: number; end?: number };
 type SessionMetricPart = { type: string; tokens?: TokenPayload; time?: PartTime & { created?: number } };
 
 export type SessionMessageRecord = {
-  info: Pick<Message, 'id' | 'role'> & {
+  info: Pick<Message, 'id'> & {
+    role?: Message['role'];
+    clientRole?: string;
     modelID?: string;
     tokens?: TokenPayload;
     time?: MessageTime;
@@ -23,6 +26,7 @@ export type SessionMessageRecord = {
 export type SessionTimingProjection = {
   ttftMs?: readonly number[];
   decodeSeconds?: number;
+  llmDurationMs?: number;
 };
 
 export type SessionMetrics = {
@@ -82,10 +86,15 @@ export const deriveSessionMetrics = (
   let derivedDecodeSeconds = 0;
 
   for (const record of messages) {
-    if (record.info.role === 'user') {
+    // The role helper also handles clientRole and user markers from optimistic
+    // and older wire records, where Message.role can be absent.
+    // SAFETY: deriveMessageRole only reads role compatibility fields from this
+    // record; the full SDK message payload is not needed for classification.
+    const role = deriveMessageRole(record.info as Message);
+    if (role.isUser) {
       turns += 1;
     }
-    if (record.info.role !== 'assistant') continue;
+    if (role.role !== 'assistant') continue;
 
     steps += 1;
     model = record.info.modelID?.trim() || model;
@@ -134,7 +143,11 @@ export const deriveSessionMetrics = (
   if (steps > 0 && (input + output + reasoning + cacheRead + cacheWrite > 0)) {
     metrics.tokens = { input, output, reasoning, cacheRead, cacheWrite };
   }
+  const projectedLlmDuration = timing.llmDurationMs;
   if (hasLlmDuration) metrics.llmDurationMs = llmDurationMs;
+  else if (projectedLlmDuration !== undefined && Number.isFinite(projectedLlmDuration) && projectedLlmDuration >= 0) {
+    metrics.llmDurationMs = projectedLlmDuration;
+  }
   if (hasToolDuration) metrics.toolDurationMs = toolDurationMs;
   if (validTtft.length > 0) metrics.ttftMs = validTtft.reduce((sum, value) => sum + value, 0) / validTtft.length;
   if (totalInput > 0 && cacheRead > 0) metrics.cacheHitPercent = (cacheRead / totalInput) * 100;

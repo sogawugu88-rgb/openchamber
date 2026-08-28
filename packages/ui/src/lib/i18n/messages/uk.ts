@@ -1460,6 +1460,8 @@ export const dict: Record<I18nKey, string> = {
   "contextSidebar.breakdown.other": "Інше",
   "contextSidebar.stats.messages": "Повідомлення",
   "chat.sessionMetrics.tokens": "Токени",
+  "chat.sessionMetrics.turns": "Раунди",
+  "chat.sessionMetrics.steps": "Кроки",
   "chat.sessionMetrics.cacheTokens": "Кеш",
   "chat.sessionMetrics.llm": "LLM",
   "chat.sessionMetrics.tools": "Інструменти",

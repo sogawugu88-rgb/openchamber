@@ -1470,6 +1470,8 @@ export const dict: Record<I18nKey, string> = {
   'contextSidebar.breakdown.other': '其他',
   'contextSidebar.stats.messages': '訊息',
   'chat.sessionMetrics.tokens': 'Token',
+  'chat.sessionMetrics.turns': '回合',
+  'chat.sessionMetrics.steps': '步驟',
   'chat.sessionMetrics.cacheTokens': '快取',
   'chat.sessionMetrics.llm': 'LLM',
   'chat.sessionMetrics.tools': '工具',
