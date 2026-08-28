@@ -144,7 +144,9 @@ export const deriveSessionMetrics = (
     metrics.tokens = { input, output, reasoning, cacheRead, cacheWrite };
   }
   const projectedLlmDuration = timing.llmDurationMs;
-  if (projectedLlmDuration !== undefined && Number.isFinite(projectedLlmDuration) && projectedLlmDuration >= 0) {
+  // The activity projection is latest-turn-only, so it is authoritative only
+  // when this session fold contains exactly one assistant step.
+  if (steps === 1 && projectedLlmDuration !== undefined && Number.isFinite(projectedLlmDuration) && projectedLlmDuration >= 0) {
     metrics.llmDurationMs = projectedLlmDuration;
   } else if (hasLlmDuration) {
     metrics.llmDurationMs = llmDurationMs;

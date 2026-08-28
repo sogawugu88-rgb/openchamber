@@ -110,4 +110,13 @@ describe('deriveSessionMetrics', () => {
 
     expect(metrics.llmDurationMs).toBe(1_500);
   });
+
+  test('keeps the full-session LLM duration across multiple assistant turns', () => {
+    const metrics = deriveSessionMetrics([
+      assistant('first', { output: 10 }, 'model-a', 1_000, 3_000),
+      assistant('second', { output: 20 }, 'model-a', 4_000, 9_000),
+    ], { llmDurationMs: 1_500 });
+
+    expect(metrics.llmDurationMs).toBe(7_000);
+  });
 });
