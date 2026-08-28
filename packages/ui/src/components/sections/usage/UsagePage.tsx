@@ -22,7 +22,7 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useAllSessionStatuses } from '@/sync/sync-context';
 import type { TokenUsageReport } from '@/lib/api/types';
-import { getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent } from './tokenUsage';
+import { createTokenUsageRequestCoordinator, getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent, shouldReloadTokenUsageMonth } from './tokenUsage';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -54,20 +54,25 @@ export const UsagePage: React.FC = () => {
   const tokenRequestRef = React.useRef(0);
   const refreshScheduledRef = React.useRef(false);
   const previousStatusesRef = React.useRef<Record<string, { type: string }>>({});
+  const initialRequestStartedRef = React.useRef(false);
+  const skipNextMonthRequestRef = React.useRef(false);
+  const tokenRunRef = React.useRef<() => Promise<void>>(() => Promise.resolve());
+  const tokenCoordinatorRef = React.useRef(createTokenUsageRequestCoordinator(() => tokenRunRef.current()));
 
-  const loadTokenUsage = React.useCallback(() => {
+  tokenRunRef.current = React.useCallback(async () => {
     const requestId = ++tokenRequestRef.current;
     setTokenLoading(true);
     setTokenError(null);
     const requestedMonth = tokenMonth;
-    void tokenUsage.getReport(requestedMonth ?? undefined)
+    await tokenUsage.getReport(requestedMonth ?? undefined)
       .then((report) => {
         if (requestId !== tokenRequestRef.current) return;
-        if (requestedMonth !== null && report.month !== requestedMonth) {
+        if (shouldReloadTokenUsageMonth(requestedMonth, report.month)) {
           setTokenReport(null);
           setTokenMonth(report.month);
           return;
         }
+        if (requestedMonth === null) skipNextMonthRequestRef.current = true;
         setTokenMonth(report.month);
         setTokenReport({ runtimeKey, report });
       })
@@ -80,9 +85,23 @@ export const UsagePage: React.FC = () => {
       });
   }, [runtimeKey, tokenMonth, tokenUsage]);
 
+  const loadTokenUsage = React.useCallback(() => {
+    tokenCoordinatorRef.current.request();
+  }, []);
+
   React.useEffect(() => {
+    if (tokenMonth === null) {
+      if (initialRequestStartedRef.current) return;
+      initialRequestStartedRef.current = true;
+      loadTokenUsage();
+      return;
+    }
+    if (skipNextMonthRequestRef.current) {
+      skipNextMonthRequestRef.current = false;
+      return;
+    }
     loadTokenUsage();
-  }, [loadTokenUsage]);
+  }, [loadTokenUsage, tokenMonth]);
 
   React.useEffect(() => {
     const previous = previousStatusesRef.current;

@@ -47,6 +47,30 @@ export const hasSettledUsageTransition = (previousType: string | undefined, curr
   (previousType === 'busy' || previousType === 'retry')
   && (currentType === 'idle' || currentType === 'error');
 
+export const shouldReloadTokenUsageMonth = (requestedMonth: string | null, reportMonth: string): boolean =>
+  requestedMonth !== null && requestedMonth !== reportMonth;
+
+export const createTokenUsageRequestCoordinator = (run: () => Promise<void>) => {
+  let inFlight = false;
+  let pending = false;
+
+  const request = (): void => {
+    if (inFlight) {
+      pending = true;
+      return;
+    }
+    inFlight = true;
+    void run().finally(() => {
+      inFlight = false;
+      if (!pending) return;
+      pending = false;
+      request();
+    });
+  };
+
+  return { request };
+};
+
 export const buildMonthCalendar = (month: string): CalendarCell[] => {
   const { year, month: monthNumber } = parseMonthKey(month);
   const firstDay = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();

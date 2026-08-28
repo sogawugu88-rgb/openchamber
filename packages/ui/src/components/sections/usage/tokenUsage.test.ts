@@ -6,6 +6,8 @@ import {
   isTokenUsageReportCurrent,
   getUsageIntensity,
   hasSettledUsageTransition,
+  createTokenUsageRequestCoordinator,
+  shouldReloadTokenUsageMonth,
 } from './tokenUsage';
 import type { TokenUsageReport } from '@/lib/api/types';
 
@@ -75,5 +77,29 @@ describe('token usage helpers', () => {
     expect(hasSettledUsageTransition('retry', 'error')).toBe(true);
     expect(hasSettledUsageTransition('busy', 'retry')).toBe(false);
     expect(hasSettledUsageTransition('idle', 'idle')).toBe(false);
+  });
+
+  test('coalesces settlements while a token usage request is in flight', async () => {
+    let resolveRequest: (() => void) | undefined;
+    let requestCount = 0;
+    const coordinator = createTokenUsageRequestCoordinator(async () => {
+      requestCount += 1;
+      await new Promise<void>((resolve) => { resolveRequest = resolve; });
+    });
+
+    coordinator.request();
+    coordinator.request();
+    coordinator.request();
+    expect(requestCount).toBe(1);
+
+    resolveRequest?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(requestCount).toBe(2);
+  });
+
+  test('does not reload after adopting the month from the initial server-default report', () => {
+    expect(shouldReloadTokenUsageMonth(null, '2026-08')).toBe(false);
+    expect(shouldReloadTokenUsageMonth('2026-07', '2026-08')).toBe(true);
   });
 });
