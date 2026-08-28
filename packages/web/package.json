@@ -103,6 +103,9 @@
   "files": [
     "dist",
     "server",
+    "!server/**/*.test.js",
+    "!server/**/*.test.mjs",
+    "!server/**/DOCUMENTATION.md",
     "bin",
     "public",
     "package.json",
