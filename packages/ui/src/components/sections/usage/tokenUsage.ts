@@ -1,4 +1,5 @@
 import type { TokenUsageBucket } from '@/lib/api/types';
+import type { TokenUsageReport } from '@/lib/api/types';
 
 export interface CalendarCell {
   dateKey: string | null;
@@ -31,6 +32,20 @@ export const getMonthKey = (month: string, offset: number): string => {
   const monthNumber = index % 12 + 1;
   return `${year}-${pad(monthNumber)}`;
 };
+
+export const getInitialMonthKey = (date: Date): string =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+
+export const isTokenUsageReportCurrent = (
+  report: TokenUsageReport,
+  reportRuntimeKey: string,
+  month: string,
+  runtimeKey: string,
+): boolean => report.month === month && reportRuntimeKey === runtimeKey;
+
+export const hasSettledUsageTransition = (previousType: string | undefined, currentType: string): boolean =>
+  (previousType === 'busy' || previousType === 'retry')
+  && (currentType === 'idle' || currentType === 'error');
 
 export const buildMonthCalendar = (month: string): CalendarCell[] => {
   const { year, month: monthNumber } = parseMonthKey(month);

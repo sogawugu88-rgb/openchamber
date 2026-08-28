@@ -2,9 +2,13 @@ import { describe, expect, test } from 'bun:test';
 import {
   buildMonthCalendar,
   formatTokenCount,
+  getInitialMonthKey,
   getMonthKey,
+  isTokenUsageReportCurrent,
   getUsageIntensity,
+  hasSettledUsageTransition,
 } from './tokenUsage';
+import type { TokenUsageReport } from '@/lib/api/types';
 
 describe('token usage helpers', () => {
   test('builds a fixed seven-column calendar from a month key', () => {
@@ -46,5 +50,37 @@ describe('token usage helpers', () => {
   test('moves between month boundaries without browser date arithmetic', () => {
     expect(getMonthKey('2026-01', -1)).toBe('2025-12');
     expect(getMonthKey('2026-12', 1)).toBe('2027-01');
+  });
+
+  test('only treats a report as current when runtime and requested month both match', () => {
+    const bucket = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+    const report: TokenUsageReport = {
+      timezone: 'UTC',
+      month: '2026-01',
+      today: { ...bucket, date: '2026-01-01' },
+      currentMonth: bucket,
+      total: bucket,
+      days: {},
+      fetchedAt: 0,
+    };
+
+    expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-01', 'runtime-a')).toBe(true);
+    expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-02', 'runtime-a')).toBe(false);
+    expect(isTokenUsageReportCurrent(report, 'runtime-a', '2026-01', 'runtime-b')).toBe(false);
+  });
+
+  test('uses local calendar fields for the initial month', () => {
+    const localDate = new Date(2026, 0, 1, 0, 30);
+
+    expect(getInitialMonthKey(localDate)).toBe('2026-01');
+  });
+
+  test('recognizes busy and retry transitions into idle or error as settled', () => {
+    expect(hasSettledUsageTransition('busy', 'idle')).toBe(true);
+    expect(hasSettledUsageTransition('busy', 'error')).toBe(true);
+    expect(hasSettledUsageTransition('retry', 'idle')).toBe(true);
+    expect(hasSettledUsageTransition('retry', 'error')).toBe(true);
+    expect(hasSettledUsageTransition('busy', 'retry')).toBe(false);
+    expect(hasSettledUsageTransition('idle', 'idle')).toBe(false);
   });
 });

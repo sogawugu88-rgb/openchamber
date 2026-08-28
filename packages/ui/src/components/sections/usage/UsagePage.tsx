@@ -21,7 +21,8 @@ import { TokenUsageCalendar } from './TokenUsageCalendar';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useAllSessionStatuses } from '@/sync/sync-context';
-import { getMonthKey } from './tokenUsage';
+import type { TokenUsageReport } from '@/lib/api/types';
+import { getInitialMonthKey, getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent } from './tokenUsage';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -46,8 +47,8 @@ export const UsagePage: React.FC = () => {
   const { tokenUsage } = useRuntimeAPIs();
   const runtimeKey = getRuntimeKey();
   const sessionStatuses = useAllSessionStatuses();
-  const [tokenMonth, setTokenMonth] = React.useState(() => getMonthKey(new Date().toISOString().slice(0, 7), 0));
-  const [tokenReport, setTokenReport] = React.useState<{ runtimeKey: string; report: import('@/lib/api/types').TokenUsageReport } | null>(null);
+  const [tokenMonth, setTokenMonth] = React.useState(() => getInitialMonthKey(new Date()));
+  const [tokenReport, setTokenReport] = React.useState<{ runtimeKey: string; report: TokenUsageReport } | null>(null);
   const [tokenLoading, setTokenLoading] = React.useState(true);
   const [tokenError, setTokenError] = React.useState<string | null>(null);
   const tokenRequestRef = React.useRef(0);
@@ -61,6 +62,11 @@ export const UsagePage: React.FC = () => {
     void tokenUsage.getReport(tokenMonth)
       .then((report) => {
         if (requestId !== tokenRequestRef.current) return;
+        if (report.month !== tokenMonth) {
+          setTokenReport(null);
+          setTokenMonth(report.month);
+          return;
+        }
         setTokenReport({ runtimeKey, report });
       })
       .catch((cause: unknown) => {
@@ -80,7 +86,7 @@ export const UsagePage: React.FC = () => {
     const previous = previousStatusesRef.current;
     const settled = Object.entries(sessionStatuses).some(([sessionId, status]) => {
       const previousType = previous[sessionId]?.type;
-      return previousType === 'busy' && status.type === 'idle';
+      return hasSettledUsageTransition(previousType, status.type);
     });
     previousStatusesRef.current = sessionStatuses;
     if (!settled || refreshScheduledRef.current) return;
@@ -91,7 +97,9 @@ export const UsagePage: React.FC = () => {
     });
   }, [loadTokenUsage, sessionStatuses]);
 
-  const visibleTokenReport = tokenReport?.runtimeKey === runtimeKey ? tokenReport.report : null;
+  const visibleTokenReport = tokenReport && isTokenUsageReportCurrent(tokenReport.report, tokenReport.runtimeKey, tokenMonth, runtimeKey)
+    ? tokenReport.report
+    : null;
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const results = useQuotaStore((state) => state.results);
   const selectedProviderId = useQuotaStore((state) => state.selectedProviderId);
@@ -203,11 +211,22 @@ export const UsagePage: React.FC = () => {
 
   const providerSelectedModels = selectedProviderId ? (selectedModels[selectedProviderId] ?? []) : [];
 
+  const tokenUsageCalendar = (
+    <TokenUsageCalendar
+      month={tokenMonth}
+      report={visibleTokenReport}
+      loading={tokenLoading}
+      error={tokenError}
+      onRetry={loadTokenUsage}
+      onMonthChange={(offset) => setTokenMonth((current) => getMonthKey(current, offset))}
+    />
+  );
+
   if (!selectedProviderId) {
     return (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-        <p className="typography-body">{t('settings.usage.page.empty.selectProvider')}</p>
-      </div>
+      <SettingsPageLayout title={t('settings.usage.sidebar.title')}>
+        {tokenUsageCalendar}
+      </SettingsPageLayout>
     );
   }
 
@@ -239,14 +258,7 @@ export const UsagePage: React.FC = () => {
         />
       </SettingsSection>
 
-      <TokenUsageCalendar
-        month={tokenMonth}
-        report={visibleTokenReport}
-        loading={tokenLoading}
-        error={tokenError}
-        onRetry={loadTokenUsage}
-        onMonthChange={(offset) => setTokenMonth((current) => getMonthKey(current, offset))}
-      />
+      {tokenUsageCalendar}
 
       {!selectedResult && (
         <p className="typography-ui-label text-foreground pb-8">{t('settings.usage.page.state.noData')}</p>
