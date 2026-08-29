@@ -1,5 +1,6 @@
 import React from 'react';
 import { runtimeFetch } from '@/lib/runtime-fetch';
+import { normalizeCodeServerBaseUrl } from '@/lib/codeServerUrl';
 
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import type { ThemeMode } from '@/types/theme';
@@ -267,7 +268,10 @@ const normalizeUserMessageRenderingMode = (mode: unknown): 'markdown' | 'plain' 
     return mode === 'markdown' ? 'markdown' : 'plain';
 };
 
-type VisibleSetting = 'sessionAssist' | 'sessionGoal' | 'theme' | 'windowControlsPosition' | 'pwaInstallName' | 'pwaOrientation' | 'mobileKeyboardMode' | 'timeFormat' | 'weekStart' | 'fontSize' | 'terminalFontSize' | 'terminalShell' | 'terminalLoginShell' | 'editorFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'messageTransport' | 'activityRenderMode' | 'collapsibleUserMessages' | 'stickyUserHeader' | 'promptNavigatorEnabled' | 'wideChatLayout' | 'codeBlockLineWrap' | 'splitAssistantMessageActions' | 'subagentReadOnlyBanner' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'fileViewerPreview' | 'reasoning' | 'showToolFileIcons' | 'showTurnChangedFiles' | 'expandedTools' | 'followUpBehavior' | 'terminalQuickKeys' | 'fileEditorKeymap' | 'persistDraft' | 'inputSpellcheck' | 'reportUsage' | 'autoSaveEnabled' | 'sessionTabs';
+type VisibleSetting = 'sessionAssist' | 'sessionGoal' | 'codeServer' | 'theme' | 'windowControlsPosition' | 'pwaInstallName' | 'pwaOrientation' | 'mobileKeyboardMode' | 'timeFormat' | 'weekStart' | 'fontSize' | 'terminalFontSize' | 'terminalShell' | 'terminalLoginShell' | 'editorFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'messageTransport' | 'activityRenderMode' | 'collapsibleUserMessages' | 'stickyUserHeader' | 'promptNavigatorEnabled' | 'wideChatLayout' | 'codeBlockLineWrap' | 'splitAssistantMessageActions' | 'subagentReadOnlyBanner' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'fileViewerPreview' | 'reasoning' | 'showToolFileIcons' | 'showTurnChangedFiles' | 'expandedTools' | 'followUpBehavior' | 'terminalQuickKeys' | 'fileEditorKeymap' | 'persistDraft' | 'inputSpellcheck' | 'reportUsage' | 'showSessionTokenDetails' | 'autoSaveEnabled' | 'sessionTabs';
+
+export const shouldRenderCodeServerSetting = (visibleSettings: readonly VisibleSetting[] | undefined): boolean =>
+    visibleSettings === undefined || visibleSettings.includes('codeServer');
 
 const WINDOW_CONTROLS_POSITION_OPTIONS: Array<{ id: DesktopWindowControlsPosition; labelKey: string }> = [
     { id: 'left', labelKey: 'settings.openchamber.desktopNetwork.option.windowControlsLeft' },
@@ -302,11 +306,20 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const setSessionGoalDefaultBudgetEnabled = useUIStore(state => state.setSessionGoalDefaultBudgetEnabled);
     const sessionGoalDefaultBudget = useUIStore(state => state.sessionGoalDefaultBudget);
     const setSessionGoalDefaultBudget = useUIStore(state => state.setSessionGoalDefaultBudget);
+    const sessionGoalAuditFailureLimit = useUIStore(state => state.sessionGoalAuditFailureLimit);
+    const setSessionGoalAuditFailureLimit = useUIStore(state => state.setSessionGoalAuditFailureLimit);
+    const codeServerBaseUrl = useUIStore(state => state.codeServerBaseUrl);
+    const setCodeServerBaseUrl = useUIStore(state => state.setCodeServerBaseUrl);
+    const [codeServerBaseUrlDraft, setCodeServerBaseUrlDraft] = React.useState(codeServerBaseUrl);
     const setShowReasoningTraces = useUIStore(state => state.setShowReasoningTraces);
     const streamingAutoFollowEnabled = useUIStore(state => state.streamingAutoFollowEnabled);
     const setStreamingAutoFollowEnabled = useUIStore(state => state.setStreamingAutoFollowEnabled);
     const collapsibleThinkingBlocks = useUIStore(state => state.collapsibleThinkingBlocks);
     const setCollapsibleThinkingBlocks = useUIStore(state => state.setCollapsibleThinkingBlocks);
+
+    React.useEffect(() => {
+        setCodeServerBaseUrlDraft(codeServerBaseUrl);
+    }, [codeServerBaseUrl]);
 
     const mermaidRenderingMode = useUIStore(state => state.mermaidRenderingMode);
     const setMermaidRenderingMode = useUIStore(state => state.setMermaidRenderingMode);
@@ -418,12 +431,19 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const [chatRenderPreviewTick, setChatRenderPreviewTick] = React.useState(0);
     const reportUsage = useUIStore(state => state.reportUsage);
     const setReportUsage = useUIStore(state => state.setReportUsage);
+    const showSessionTokenDetails = useUIStore(state => state.showSessionTokenDetails);
+    const setShowSessionTokenDetails = useUIStore(state => state.setShowSessionTokenDetails);
 
     // Sync reportUsage changes to server settings
     const handleReportUsageChange = React.useCallback((enabled: boolean) => {
         setReportUsage(enabled);
         void updateDesktopSettings({ reportUsage: enabled });
     }, [setReportUsage]);
+
+    const handleShowSessionTokenDetailsChange = React.useCallback((enabled: boolean) => {
+        setShowSessionTokenDetails(enabled);
+        void updateDesktopSettings({ showSessionTokenDetails: enabled });
+    }, [setShowSessionTokenDetails]);
 
     const handleWindowControlsPositionChange = React.useCallback((value: DesktopWindowControlsPosition) => {
         setDesktopWindowControlsPosition(value);
@@ -640,8 +660,12 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         || shouldShow('followUpBehavior')
         || shouldShow('persistDraft')
         || shouldShow('showToolFileIcons')
-        || shouldShow('expandedTools')
-        || (!isMobile && shouldShow('inputSpellcheck'));
+         || shouldShow('expandedTools')
+         || (!isMobile && shouldShow('inputSpellcheck'))
+         || shouldShow('showSessionTokenDetails');
+     const hasComposerSettings = shouldShow('showSessionTokenDetails')
+         || shouldShow('persistDraft')
+         || (!isMobile && shouldShow('inputSpellcheck'));
     const showBehaviorDisplaySettings = shouldShow('chatRenderMode')
         || (shouldShow('activityRenderMode') && chatRenderMode === 'sorted');
     const showTransportSection = shouldShow('messageTransport');
@@ -662,9 +686,10 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         || shouldShow('fileViewerPreview')
         || shouldShow('persistDraft')
         || shouldShow('showToolFileIcons')
-        || shouldShow('showTurnChangedFiles')
-        || (!isMobile && shouldShow('inputSpellcheck'))
-        || shouldShow('reasoning')
+         || shouldShow('showTurnChangedFiles')
+         || (!isMobile && shouldShow('inputSpellcheck'))
+         || shouldShow('showSessionTokenDetails')
+         || shouldShow('reasoning')
         || shouldShow('expandedTools');
     // First behavior section under the page header should not draw a top border on Chat-only;
     // when Appearance (or earlier sections) already rendered, keep the default divider.
@@ -1721,8 +1746,8 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                             </SettingsSection>
                         )}
 
-                        {showBehaviorFeatureCheckboxes && (
-                            <>
+                {showBehaviorFeatureCheckboxes && (
+                    <>
                                 {shouldShow('expandedTools') && (
                                     <SettingsSection
                                         title={t('settings.openchamber.visual.section.showToolsOpenedByDefault')}
@@ -1785,7 +1810,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                 </SettingsSection>
                                 {/* The goal loop runs in the web server — VS Code only renders
                                     goal state, so the settings section is hidden there too. */}
-                                {shouldShow('sessionGoal') && !isVSCode && (
+                                 {shouldShow('sessionGoal') && !isVSCode && (
                                     <SettingsSection
                                         title={t('settings.openchamber.visual.goal.sectionTitle')}
                                         info={t('settings.openchamber.visual.goal.description')}
@@ -1798,7 +1823,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                             ariaLabel={t('settings.openchamber.visual.field.sessionGoalAria')}
                                             settingsItem="chat.session-goal"
                                         />
-                                        <div data-settings-item="chat.session-goal-budget" className="flex items-center gap-2">
+                                         <div data-settings-item="chat.session-goal-budget" className="flex items-center gap-2">
                                             <SettingsCheckboxRow
                                                 checked={sessionGoalDefaultBudgetEnabled}
                                                 onChange={setSessionGoalDefaultBudgetEnabled}
@@ -1818,11 +1843,36 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                                     max={100000000}
                                                     step={50000}
                                                 />
-                                            ) : null}
-                                        </div>
-                                    </SettingsSection>
-                                )}
-                                {shouldShow('reasoning') && (
+                                             ) : null}
+                                         </div>
+                                         <SettingsFieldRow
+                                             settingsItem="chat.session-goal-audit-failure-limit"
+                                             label={(
+                                                 <span className="flex items-center gap-1.5">
+                                                     {t('settings.openchamber.visual.goal.auditFailureLimitLabel')}
+                                                     <SettingsInfoHint>
+                                                         {t('settings.openchamber.visual.goal.auditFailureLimitDescription')}
+                                                     </SettingsInfoHint>
+                                                 </span>
+                                             )}
+                                         >
+                                             <NumberInput
+                                                 value={sessionGoalAuditFailureLimit}
+                                                 onValueChange={(value) => {
+                                                     if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= 20) {
+                                                         setSessionGoalAuditFailureLimit(value);
+                                                     }
+                                                 }}
+                                                 min={1}
+                                                 max={20}
+                                                 step={1}
+                                                 disabled={!sessionGoalEnabled}
+                                                 aria-label={t('settings.openchamber.visual.goal.auditFailureLimitAria')}
+                                             />
+                                         </SettingsFieldRow>
+                                     </SettingsSection>
+                                 )}
+                                 {shouldShow('reasoning') && (
                                     <SettingsSection
                                         title={t('settings.openchamber.visual.section.reasoning')}
                                         settingsItem="chat.reasoning"
@@ -1976,13 +2026,23 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                 </SettingsSection>
                                 )}
 
-                                {(shouldShow('persistDraft') || (!isMobile && shouldShow('inputSpellcheck'))) && (
-                                <SettingsSection
-                                    title={t('settings.openchamber.visual.section.composer')}
-                                    settingsItem="chat.composer"
-                                    contentClassName={SETTINGS_OPTION_STACK_CLASS}
-                                >
-                                {shouldShow('persistDraft') && (
+                                  {hasComposerSettings && (
+                                 <SettingsSection
+                                     title={t('settings.openchamber.visual.section.composer')}
+                                     settingsItem="chat.composer"
+                                     contentClassName={SETTINGS_OPTION_STACK_CLASS}
+                                 >
+                                 {shouldShow('showSessionTokenDetails') && (
+                                     <SettingsCheckboxRow
+                                         checked={showSessionTokenDetails}
+                                         onChange={handleShowSessionTokenDetailsChange}
+                                         label={t('settings.openchamber.visual.field.showSessionTokenDetails')}
+                                         ariaLabel={t('settings.openchamber.visual.field.showSessionTokenDetailsAria')}
+                                         info={t('settings.openchamber.visual.field.showSessionTokenDetailsInfo')}
+                                         settingsItem="appearance.session-token-details"
+                                     />
+                                 )}
+                                 {shouldShow('persistDraft') && (
                                     <SettingsCheckboxRow
                                         checked={persistChatDraft}
                                         onChange={setPersistChatDraft}
@@ -2006,6 +2066,50 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                             </>
                         )}
                     </>
+                )}
+
+                {shouldRenderCodeServerSetting(visibleSettings) && (
+                    <SettingsSection
+                        title={t('settings.openchamber.visual.codeServer.sectionTitle')}
+                        info={t('settings.openchamber.visual.codeServer.description')}
+                        contentClassName={SETTINGS_OPTION_STACK_CLASS}
+                    >
+                        <SettingsFieldRow
+                            settingsItem="integration.code-server"
+                            label={t('settings.openchamber.visual.codeServer.label')}
+                            info={t('settings.openchamber.visual.codeServer.description')}
+                            alignEnd={false}
+                            controlClassName={SETTINGS_CONTROL_CLUSTER_CLASS}
+                        >
+                            <Input
+                                value={codeServerBaseUrlDraft}
+                                onChange={(event) => setCodeServerBaseUrlDraft(event.target.value)}
+                                onBlur={() => {
+                                    const normalized = normalizeCodeServerBaseUrl(codeServerBaseUrlDraft);
+                                    if (normalized !== null) {
+                                        setCodeServerBaseUrl(normalized);
+                                    } else {
+                                        setCodeServerBaseUrlDraft(codeServerBaseUrl);
+                                    }
+                                }}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                        event.preventDefault();
+                                        const normalized = normalizeCodeServerBaseUrl(codeServerBaseUrlDraft);
+                                        if (normalized !== null) {
+                                            setCodeServerBaseUrl(normalized);
+                                        } else {
+                                            setCodeServerBaseUrlDraft(codeServerBaseUrl);
+                                        }
+                                    }
+                                }}
+                                placeholder={t('settings.openchamber.visual.codeServer.placeholder')}
+                                className="min-w-0 flex-1"
+                                inputMode="url"
+                                aria-label={t('settings.openchamber.visual.codeServer.aria')}
+                            />
+                        </SettingsFieldRow>
+                    </SettingsSection>
                 )}
 
                 {/* --- Privacy & Data --- */}

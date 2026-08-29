@@ -137,6 +137,8 @@ export type DesktopSettings = {
   sessionGoalEnabled?: boolean;
   sessionGoalDefaultBudgetEnabled?: boolean;
   sessionGoalDefaultBudget?: number;
+  sessionGoalAuditFailureLimit?: number;
+  codeServerBaseUrl?: string;
   smallModelOverride?: string; // format: "provider/model"
   // The walkthrough needs structured output and a roomy context, which the
   // small model is often deliberately not chosen for. Unset means "use the
@@ -212,6 +214,8 @@ export type DesktopSettings = {
   skillCatalogs?: SkillCatalogConfig[];
   // Opt-in to send anonymous usage reports for update checks (default: true)
   reportUsage?: boolean;
+  // Show the detailed metrics row below the Composer (default: true)
+  showSessionTokenDetails?: boolean;
 
   // Global behavior prompt — synced to ~/.config/opencode/AGENTS.md
   globalBehaviorPrompt?: string;

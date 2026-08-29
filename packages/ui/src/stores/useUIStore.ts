@@ -691,6 +691,8 @@ interface UIStore {
   sessionGoalEnabled: boolean;
   sessionGoalDefaultBudgetEnabled: boolean;
   sessionGoalDefaultBudget: number;
+  sessionGoalAuditFailureLimit: number;
+  codeServerBaseUrl: string;
   collapsibleThinkingBlocks: boolean;
   chatRenderMode: ChatRenderMode;
   activityRenderMode: ActivityRenderMode;
@@ -803,6 +805,7 @@ interface UIStore {
   allowPromptingSubagentSessions: boolean;
   isExpandedInput: boolean;
   reportUsage: boolean;
+  showSessionTokenDetails: boolean;
   shortcutOverrides: Record<string, ShortcutCombo>;
   fileEditorKeymap: FileEditorKeymap;
 
@@ -878,6 +881,8 @@ interface UIStore {
   setSessionGoalEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudgetEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudget: (value: number) => void;
+  setSessionGoalAuditFailureLimit: (value: number) => void;
+  setCodeServerBaseUrl: (value: string) => void;
   setCollapsibleThinkingBlocks: (value: boolean) => void;
   setChatRenderMode: (value: ChatRenderMode) => void;
   setActivityRenderMode: (value: ActivityRenderMode) => void;
@@ -982,6 +987,7 @@ interface UIStore {
   openMultiRunLauncher: () => void;
   openMultiRunLauncherWithPrompt: (prompt: string) => void;
   setReportUsage: (value: boolean) => void;
+  setShowSessionTokenDetails: (value: boolean) => void;
   setShortcutOverride: (actionId: string, combo: ShortcutCombo) => void;
   clearShortcutOverride: (actionId: string) => void;
   resetAllShortcutOverrides: () => void;
@@ -1048,6 +1054,8 @@ export const useUIStore = create<UIStore>()(
         sessionGoalEnabled: true,
         sessionGoalDefaultBudgetEnabled: false,
         sessionGoalDefaultBudget: 200_000,
+        sessionGoalAuditFailureLimit: 2,
+        codeServerBaseUrl: '',
         collapsibleThinkingBlocks: true,
         chatRenderMode: 'live',
         activityRenderMode: 'summary',
@@ -1140,6 +1148,7 @@ export const useUIStore = create<UIStore>()(
         draftStartersVisible: true,
         isExpandedInput: false,
         reportUsage: true,
+        showSessionTokenDetails: true,
         shortcutOverrides: {},
         fileEditorKeymap: 'default',
 
@@ -1807,6 +1816,14 @@ export const useUIStore = create<UIStore>()(
           set({ sessionGoalDefaultBudget: value });
         },
 
+        setSessionGoalAuditFailureLimit: (value) => {
+          set({ sessionGoalAuditFailureLimit: value });
+        },
+
+        setCodeServerBaseUrl: (value) => {
+          set({ codeServerBaseUrl: value });
+        },
+
         setCollapsibleThinkingBlocks: (value) => {
           set({ collapsibleThinkingBlocks: value });
         },
@@ -2391,6 +2408,9 @@ export const useUIStore = create<UIStore>()(
         setReportUsage: (value) => {
           set({ reportUsage: value });
         },
+        setShowSessionTokenDetails: (value) => {
+          set({ showSessionTokenDetails: value });
+        },
         viewPagerPage: 'center',
         setViewPagerPage: (page: 'left' | 'center' | 'right') => {
           set({ viewPagerPage: page });
@@ -2679,13 +2699,16 @@ export const useUIStore = create<UIStore>()(
           settingsRemoteInstancesSelectedId: state.settingsRemoteInstancesSelectedId,
           isSessionCreateDialogOpen: state.isSessionCreateDialogOpen,
           // Note: isSettingsDialogOpen intentionally NOT persisted
-          showReasoningTraces: state.showReasoningTraces,
-          streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
+           showReasoningTraces: state.showReasoningTraces,
+           showSessionTokenDetails: state.showSessionTokenDetails,
+           streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
           sessionRecapEnabled: state.sessionRecapEnabled,
           sessionSuggestionEnabled: state.sessionSuggestionEnabled,
           sessionGoalEnabled: state.sessionGoalEnabled,
           sessionGoalDefaultBudgetEnabled: state.sessionGoalDefaultBudgetEnabled,
           sessionGoalDefaultBudget: state.sessionGoalDefaultBudget,
+          sessionGoalAuditFailureLimit: state.sessionGoalAuditFailureLimit,
+          codeServerBaseUrl: state.codeServerBaseUrl,
           collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
           chatRenderMode: state.chatRenderMode,
           activityRenderMode: state.activityRenderMode,

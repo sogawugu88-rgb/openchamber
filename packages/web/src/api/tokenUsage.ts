@@ -1,4 +1,4 @@
-import type { TokenUsageAPI, TokenUsageReport } from '@openchamber/ui/lib/api/types';
+import type { TokenUsageAPI, TokenUsageModelBucket, TokenUsageReport } from '@openchamber/ui/lib/api/types';
 import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
 
 type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
@@ -36,6 +36,17 @@ const parseBucket = (value: JsonValue): TokenUsageReport['total'] | null => {
   };
 };
 
+const parseModelBucket = (value: JsonValue): TokenUsageModelBucket | null => {
+  if (!isPlainObject(value) || !isString(value.providerID) || !isString(value.modelID)) return null;
+  const bucket = parseBucket(value);
+  if (!bucket || value.providerID.trim() === '' || value.modelID.trim() === '') return null;
+  return {
+    providerID: value.providerID.trim(),
+    modelID: value.modelID.trim(),
+    ...bucket,
+  };
+};
+
 const parseTokenUsageReport = (body: string, requestedMonth?: string): TokenUsageReport => {
   const value: JsonValue = JSON.parse(body);
   if (!isPlainObject(value) || !isString(value.timezone) || !isString(value.month) || !MONTH_PATTERN.test(value.month) || (requestedMonth !== undefined && value.month !== requestedMonth) || !isFiniteNumber(value.fetchedAt)) {
@@ -46,7 +57,7 @@ const parseTokenUsageReport = (body: string, requestedMonth?: string): TokenUsag
   const today = todayDate === null ? null : parseBucket(todayValue);
   const currentMonth = parseBucket(value.currentMonth);
   const total = parseBucket(value.total);
-  if (!today || !currentMonth || !total || !isPlainObject(value.days)) {
+  if (!today || !currentMonth || !total || !isPlainObject(value.days) || !isPlainObject(value.modelsByDay)) {
     throw new Error('Token usage API returned invalid data format');
   }
   const days: TokenUsageReport['days'] = {};
@@ -56,6 +67,17 @@ const parseTokenUsageReport = (body: string, requestedMonth?: string): TokenUsag
     if (!parsedBucket) throw new Error('Token usage API returned invalid data format');
     days[date] = parsedBucket;
   }
+  const modelsByDay: TokenUsageReport['modelsByDay'] = {};
+  for (const [date, models] of Object.entries(value.modelsByDay)) {
+    if (!isValidDateKey(date, value.month) || !Array.isArray(models)) {
+      throw new Error('Token usage API returned invalid data format');
+    }
+    const parsedModels = models.map(parseModelBucket);
+    if (parsedModels.some((model): model is null => model === null)) {
+      throw new Error('Token usage API returned invalid data format');
+    }
+    modelsByDay[date] = parsedModels.filter((model): model is TokenUsageModelBucket => model !== null);
+  }
   return {
     timezone: String(value.timezone),
     month: String(value.month),
@@ -63,15 +85,23 @@ const parseTokenUsageReport = (body: string, requestedMonth?: string): TokenUsag
     currentMonth,
     total,
     days,
+    modelsByDay,
     fetchedAt: Number(value.fetchedAt),
   };
 };
 
 export const createWebTokenUsageAPI = (fetchRuntime: typeof runtimeFetch = runtimeFetch): TokenUsageAPI => ({
-  async getReport(month?: string): Promise<TokenUsageReport> {
-    const response = month === undefined
-      ? await fetchRuntime('/api/openchamber/token-usage')
-      : await fetchRuntime('/api/openchamber/token-usage', { query: { month } });
+  async getReport(month?: string, timezone?: string): Promise<TokenUsageReport> {
+    let response: Response;
+    if (month !== undefined && timezone !== undefined) {
+      response = await fetchRuntime('/api/openchamber/token-usage', { query: { month, timezone } });
+    } else if (month !== undefined) {
+      response = await fetchRuntime('/api/openchamber/token-usage', { query: { month } });
+    } else if (timezone !== undefined) {
+      response = await fetchRuntime('/api/openchamber/token-usage', { query: { timezone } });
+    } else {
+      response = await fetchRuntime('/api/openchamber/token-usage');
+    }
     const body = await response.text();
     if (!response.ok) {
       let message = `Token usage API returned ${response.status} ${response.statusText}`;

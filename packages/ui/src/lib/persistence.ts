@@ -551,6 +551,8 @@ const materializeAuthoritativeUiSettings = (settings: DesktopSettings): DesktopS
     sessionGoalEnabled: defaults.sessionGoalEnabled,
     sessionGoalDefaultBudgetEnabled: defaults.sessionGoalDefaultBudgetEnabled,
     sessionGoalDefaultBudget: defaults.sessionGoalDefaultBudget,
+    sessionGoalAuditFailureLimit: defaults.sessionGoalAuditFailureLimit,
+    codeServerBaseUrl: defaults.codeServerBaseUrl,
     collapsibleThinkingBlocks: defaults.collapsibleThinkingBlocks,
     autoDeleteEnabled: defaults.autoDeleteEnabled,
     autoSaveEnabled: defaults.autoSaveEnabled,
@@ -593,9 +595,10 @@ const materializeAuthoritativeUiSettings = (settings: DesktopSettings): DesktopS
     promptNavigatorEnabled: defaults.promptNavigatorEnabled,
     wideChatLayoutEnabled: defaults.wideChatLayoutEnabled,
     showSplitAssistantMessageActions: defaults.showSplitAssistantMessageActions,
-    draftStartersVisible: defaults.draftStartersVisible,
-    reportUsage: defaults.reportUsage,
-    fontSize: defaults.fontSize,
+     draftStartersVisible: defaults.draftStartersVisible,
+     reportUsage: defaults.reportUsage,
+     showSessionTokenDetails: defaults.showSessionTokenDetails,
+     fontSize: defaults.fontSize,
     terminalFontSize: defaults.terminalFontSize,
     terminalShell: defaults.terminalShell,
     terminalLoginShells: defaults.terminalLoginShells,
@@ -667,6 +670,16 @@ const applyDesktopUiPreferences = (settings: DesktopSettings) => {
   }
   if (typeof settings.sessionGoalDefaultBudget === 'number' && Number.isFinite(settings.sessionGoalDefaultBudget) && settings.sessionGoalDefaultBudget !== store.sessionGoalDefaultBudget) {
     store.setSessionGoalDefaultBudget(settings.sessionGoalDefaultBudget);
+  }
+  if (typeof settings.sessionGoalAuditFailureLimit === 'number'
+    && Number.isSafeInteger(settings.sessionGoalAuditFailureLimit)
+    && settings.sessionGoalAuditFailureLimit >= 1
+    && settings.sessionGoalAuditFailureLimit <= 20
+    && settings.sessionGoalAuditFailureLimit !== store.sessionGoalAuditFailureLimit) {
+    store.setSessionGoalAuditFailureLimit(settings.sessionGoalAuditFailureLimit);
+  }
+  if (typeof settings.codeServerBaseUrl === 'string' && settings.codeServerBaseUrl !== store.codeServerBaseUrl) {
+    store.setCodeServerBaseUrl(settings.codeServerBaseUrl);
   }
   if (typeof settings.collapsibleThinkingBlocks === 'boolean' && settings.collapsibleThinkingBlocks !== store.collapsibleThinkingBlocks) {
     store.setCollapsibleThinkingBlocks(settings.collapsibleThinkingBlocks);
@@ -868,6 +881,9 @@ const applyDesktopUiPreferences = (settings: DesktopSettings) => {
   }
   if (typeof settings.reportUsage === 'boolean' && settings.reportUsage !== store.reportUsage) {
     store.setReportUsage(settings.reportUsage);
+  }
+  if (typeof settings.showSessionTokenDetails === 'boolean' && settings.showSessionTokenDetails !== store.showSessionTokenDetails) {
+    store.setShowSessionTokenDetails(settings.showSessionTokenDetails);
   }
   if (typeof settings.fontSize === 'number' && Number.isFinite(settings.fontSize) && settings.fontSize !== store.fontSize) {
     store.setFontSize(settings.fontSize);
@@ -1191,6 +1207,15 @@ const sanitizeWebSettings = (payload: unknown): DesktopSettings | null => {
   }
   if (typeof candidate.sessionGoalDefaultBudget === 'number' && Number.isFinite(candidate.sessionGoalDefaultBudget) && candidate.sessionGoalDefaultBudget > 0) {
     result.sessionGoalDefaultBudget = Math.floor(candidate.sessionGoalDefaultBudget);
+  }
+  if (typeof candidate.sessionGoalAuditFailureLimit === 'number'
+    && Number.isSafeInteger(candidate.sessionGoalAuditFailureLimit)
+    && candidate.sessionGoalAuditFailureLimit >= 1
+    && candidate.sessionGoalAuditFailureLimit <= 20) {
+    result.sessionGoalAuditFailureLimit = candidate.sessionGoalAuditFailureLimit;
+  }
+  if (typeof candidate.codeServerBaseUrl === 'string') {
+    result.codeServerBaseUrl = candidate.codeServerBaseUrl;
   }
   if (typeof candidate.collapsibleThinkingBlocks === 'boolean') {
     result.collapsibleThinkingBlocks = candidate.collapsibleThinkingBlocks;
@@ -1637,6 +1662,9 @@ const sanitizeWebSettings = (payload: unknown): DesktopSettings | null => {
   if (typeof candidate.reportUsage === 'boolean') {
     result.reportUsage = candidate.reportUsage;
   }
+  if (typeof candidate.showSessionTokenDetails === 'boolean') {
+    result.showSessionTokenDetails = candidate.showSessionTokenDetails;
+  }
 
   if (typeof candidate.globalBehaviorPrompt === 'string') {
     result.globalBehaviorPrompt = candidate.globalBehaviorPrompt;
@@ -1921,6 +1949,7 @@ export const syncDesktopSettings = async (options?: { adoptWorkspace?: boolean }
     // `openchamber:files:auto-save-enabled`. Prefer the hydrated store value and
     // seed the backend once so later omitted→default authority is correct.
     const shouldSeedAutoSaveEnabled = typeof settings.autoSaveEnabled !== 'boolean';
+    const shouldSeedShowSessionTokenDetails = typeof settings.showSessionTokenDetails !== 'boolean';
     const shouldSeedSidebarProjectDisplayMode = settings.sidebarProjectDisplayMode === undefined;
     const shouldSeedSidebarSessionGroupingMode = settings.sidebarSessionGroupingMode === undefined;
     const shouldSeedSidebarProjectSortOrder = settings.sidebarProjectSortOrder === undefined;
@@ -1933,6 +1962,9 @@ export const syncDesktopSettings = async (options?: { adoptWorkspace?: boolean }
     }
     if (shouldSeedAutoSaveEnabled) {
       authoritativeSettings.autoSaveEnabled = useUIStore.getState().autoSaveEnabled;
+    }
+    if (shouldSeedShowSessionTokenDetails) {
+      authoritativeSettings.showSessionTokenDetails = useUIStore.getState().showSessionTokenDetails;
     }
     const sessionDisplayState = useSessionDisplayStore.getState();
     if (shouldSeedSidebarProjectDisplayMode) {
@@ -1965,6 +1997,9 @@ export const syncDesktopSettings = async (options?: { adoptWorkspace?: boolean }
     }
     if (shouldSeedAutoSaveEnabled) {
       migrationPatch.autoSaveEnabled = authoritativeSettings.autoSaveEnabled;
+    }
+    if (shouldSeedShowSessionTokenDetails) {
+      migrationPatch.showSessionTokenDetails = authoritativeSettings.showSessionTokenDetails;
     }
     if (shouldSeedSidebarProjectDisplayMode) {
       migrationPatch.sidebarProjectDisplayMode = authoritativeSettings.sidebarProjectDisplayMode;

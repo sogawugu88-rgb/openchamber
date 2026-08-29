@@ -38,4 +38,16 @@ describe('settings search', () => {
 
     expect(results.some((result) => result.id === 'integrations.third-party.opencode-cursor-oauth')).toBe(true);
   });
+
+  test('routes the code-server setting to the Appearance page', () => {
+    const results = buildSettingsSearchResults({
+      query: 'code-server',
+      runtimeCtx,
+      t,
+      getPageTitle: (page) => page,
+    });
+
+    const result = results.find((item) => item.id === 'integration.code-server');
+    expect(result?.page).toBe('appearance');
+  });
 });

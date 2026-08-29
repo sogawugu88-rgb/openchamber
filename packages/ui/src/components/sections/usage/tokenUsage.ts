@@ -1,5 +1,4 @@
-import type { TokenUsageBucket } from '@/lib/api/types';
-import type { TokenUsageReport } from '@/lib/api/types';
+import type { TokenUsageBucket, TokenUsageModelBucket, TokenUsageReport } from '@/lib/api/types';
 
 export interface CalendarCell {
   dateKey: string | null;
@@ -110,11 +109,40 @@ export const getUsageIntensity = (total: number, maximum: number): 0 | 1 | 2 | 3
   return 4;
 };
 
+export const getRecentUsageDays = (report: TokenUsageReport, count: number): string[] => {
+  if (count <= 0) return [];
+  return Object.keys(report.days)
+    .sort((left, right) => right.localeCompare(left))
+    .slice(0, count);
+};
+
+export const getSelectedDayModelUsage = (report: TokenUsageReport, date: string): TokenUsageModelBucket[] =>
+  report.modelsByDay[date] ?? [];
+
 export const formatTokenCount = (count: number): string => {
   if (count < 1_000) return String(count);
   if (count < 1_000_000) return `${Number((count / 1_000).toFixed(2))}k`;
   if (count < 1_000_000_000) return `${Number((count / 1_000_000).toFixed(2))}M`;
   return `${Number((count / 1_000_000_000).toFixed(2))}B`;
+};
+
+const formatCalendarScaledValue = (value: number): string => {
+  if (value >= 100) return String(Math.round(value));
+  if (value >= 10) return String(Number(value.toFixed(1)));
+  return String(Number(value.toFixed(2)));
+};
+
+export const formatCalendarTokenCount = (count: number): string => {
+  if (count < 1_000) return String(count);
+  if (count < 1_000_000) {
+    const value = count / 1_000;
+    return value >= 999.5 ? '1M' : `${formatCalendarScaledValue(value)}K`;
+  }
+  if (count < 1_000_000_000) {
+    const value = count / 1_000_000;
+    return value >= 999.5 ? '1B' : `${formatCalendarScaledValue(value)}M`;
+  }
+  return `${formatCalendarScaledValue(count / 1_000_000_000)}B`;
 };
 
 export const getBucketTotal = (bucket: TokenUsageBucket | undefined): number => bucket?.total ?? 0;

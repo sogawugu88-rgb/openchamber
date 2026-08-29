@@ -143,6 +143,7 @@ import {
 } from './composer/ui/DraftTargetSelectors';
 import { ComposerAutocompletePopups } from './composer/ui/ComposerAutocompletePopups';
 import { ComposerFooter } from './composer/ui/ComposerFooter';
+import { SessionMetricsBar } from './composer/ui/SessionMetricsBar';
 import { MobilePillComposer } from './composer/ui/MobilePillComposer';
 import { ComposerContextChips } from './composer/ui/ComposerContextChips';
 import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
@@ -2896,7 +2897,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         directory={currentSessionDirectoryForSync ?? currentDirectory}
                         newSessionDraftOpen={newSessionDraftOpen}
                         messageLength={message.length}
-                        sessionMetrics={sessionMetrics}
                         radius={chatInputRadius}
                         footerPaddingClass={footerPaddingClass}
                         footerGapClass={footerGapClass}
@@ -2962,6 +2962,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     />
                 ) : null}
             </div>
+            {!isMobile || mobileComposerExpanded ? (
+                <SessionMetricsBar sessionMetrics={sessionMetrics} className="mt-1" />
+            ) : null}
             {showDesktopDraftPresentation ? (
                 <DraftPresetChips
                     onSubmit={(starter) => submitPresetPrompt(starter.submitText, starter.ref.type)}

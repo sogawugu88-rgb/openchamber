@@ -15,6 +15,8 @@ type AppearanceSlice = {
   sessionGoalEnabled: boolean;
   sessionGoalDefaultBudgetEnabled: boolean;
   sessionGoalDefaultBudget: number;
+  sessionGoalAuditFailureLimit: number;
+  codeServerBaseUrl: string;
   collapsibleThinkingBlocks: boolean;
   showDeletionDialog: boolean;
   nativeNotificationsEnabled: boolean;
@@ -71,6 +73,8 @@ export const startAppearanceAutoSave = (): void => {
     sessionGoalEnabled: useUIStore.getState().sessionGoalEnabled,
     sessionGoalDefaultBudgetEnabled: useUIStore.getState().sessionGoalDefaultBudgetEnabled,
     sessionGoalDefaultBudget: useUIStore.getState().sessionGoalDefaultBudget,
+    sessionGoalAuditFailureLimit: useUIStore.getState().sessionGoalAuditFailureLimit,
+    codeServerBaseUrl: useUIStore.getState().codeServerBaseUrl,
     collapsibleThinkingBlocks: useUIStore.getState().collapsibleThinkingBlocks,
     showDeletionDialog: useUIStore.getState().showDeletionDialog,
     nativeNotificationsEnabled: useUIStore.getState().nativeNotificationsEnabled,
@@ -114,6 +118,8 @@ export const startAppearanceAutoSave = (): void => {
       sessionGoalEnabled: state.sessionGoalEnabled,
       sessionGoalDefaultBudgetEnabled: state.sessionGoalDefaultBudgetEnabled,
       sessionGoalDefaultBudget: state.sessionGoalDefaultBudget,
+      sessionGoalAuditFailureLimit: state.sessionGoalAuditFailureLimit,
+      codeServerBaseUrl: state.codeServerBaseUrl,
       collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
       showDeletionDialog: state.showDeletionDialog,
       nativeNotificationsEnabled: state.nativeNotificationsEnabled,
@@ -176,6 +182,12 @@ export const startAppearanceAutoSave = (): void => {
     }
     if (current.sessionGoalDefaultBudget !== previous.sessionGoalDefaultBudget) {
       diff.sessionGoalDefaultBudget = current.sessionGoalDefaultBudget;
+    }
+    if (current.sessionGoalAuditFailureLimit !== previous.sessionGoalAuditFailureLimit) {
+      diff.sessionGoalAuditFailureLimit = current.sessionGoalAuditFailureLimit;
+    }
+    if (current.codeServerBaseUrl !== previous.codeServerBaseUrl) {
+      diff.codeServerBaseUrl = current.codeServerBaseUrl;
     }
     if (current.collapsibleThinkingBlocks !== previous.collapsibleThinkingBlocks) {
       diff.collapsibleThinkingBlocks = current.collapsibleThinkingBlocks;

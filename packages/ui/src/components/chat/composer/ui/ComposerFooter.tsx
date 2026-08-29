@@ -23,8 +23,6 @@ import { ComposerActionButtons } from './ComposerActionButtons';
 import { ComposerAttachmentControls } from './ComposerAttachmentControls';
 import { FocusModeButton } from './FocusModeButton';
 import { PermissionAutoAcceptButton } from './PermissionAutoAcceptButton';
-import type { SessionMetrics } from '../../sessionMetrics';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const MemoModelControls = React.memo(ModelControls);
 const MemoComposerDictation = React.memo(ComposerDictation);
@@ -36,7 +34,6 @@ export interface ComposerFooterProps {
     directory?: string;
     newSessionDraftOpen: boolean;
     messageLength: number;
-    sessionMetrics?: SessionMetrics;
 
     radius: string;
     footerPaddingClass: string;
@@ -79,7 +76,6 @@ export function ComposerFooter(props: ComposerFooterProps) {
         directory,
         newSessionDraftOpen,
         messageLength,
-        sessionMetrics,
         radius: chatInputRadius,
         footerPaddingClass,
         footerGapClass,
@@ -110,30 +106,12 @@ export function ComposerFooter(props: ComposerFooterProps) {
         onDictationContentHeightChange,
     } = props;
 
-    const formatCount = (value: number): string => value.toLocaleString();
-    const formatDuration = (value: number): string => value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
-    const metricItems = sessionMetrics ? [
-        sessionMetrics.model,
-        sessionMetrics.turns > 0 ? `${t('chat.sessionMetrics.turns')}: ${formatCount(sessionMetrics.turns)}` : null,
-        sessionMetrics.steps > 0 ? `${t('chat.sessionMetrics.steps')}: ${formatCount(sessionMetrics.steps)}` : null,
-        sessionMetrics.tokens?.total !== undefined ? `${t('chat.sessionMetrics.tokens')}: ${formatCount(sessionMetrics.tokens.total)}` : null,
-        sessionMetrics.tokens ? `${t('contextSidebar.tokens.input')}: ${formatCount(sessionMetrics.tokens.input)}` : null,
-        sessionMetrics.tokens ? `${t('contextSidebar.tokens.output')}: ${formatCount(sessionMetrics.tokens.output)}` : null,
-        sessionMetrics.tokens ? `${t('contextSidebar.tokens.reasoning')}: ${formatCount(sessionMetrics.tokens.reasoning)}` : null,
-        sessionMetrics.tokens ? `${t('chat.sessionMetrics.cacheTokens')}: ${formatCount(sessionMetrics.tokens.cacheRead + sessionMetrics.tokens.cacheWrite)}` : null,
-        sessionMetrics.llmDurationMs !== undefined ? `${t('chat.sessionMetrics.llm')}: ${formatDuration(sessionMetrics.llmDurationMs)}` : null,
-        sessionMetrics.toolDurationMs !== undefined ? `${t('chat.sessionMetrics.tools')}: ${formatDuration(sessionMetrics.toolDurationMs)}` : null,
-        sessionMetrics.ttftMs !== undefined ? `${t('chat.sessionMetrics.ttft')}: ${formatDuration(sessionMetrics.ttftMs)}` : null,
-        sessionMetrics.cacheHitPercent !== undefined ? `${t('chat.sessionMetrics.cache')}: ${sessionMetrics.cacheHitPercent.toFixed(1)}%` : null,
-        sessionMetrics.outputTokensPerSecond !== undefined ? `${sessionMetrics.outputTokensPerSecond.toFixed(1)} ${t('chat.sessionMetrics.speed')}` : null,
-    ].filter((item): item is string => Boolean(item)) : [];
-
     return (
         <div
             className={cn(
-                'bg-transparent flex w-full flex-shrink-0 flex-col',
+                'bg-transparent flex w-full flex-shrink-0',
                 footerPaddingClass,
-                footerGapClass,
+                isMobile ? 'items-center gap-x-1.5' : cn('items-center justify-between', footerGapClass)
             )}
             style={{
                 borderBottomLeftRadius: chatInputRadius,
@@ -141,28 +119,6 @@ export function ComposerFooter(props: ComposerFooterProps) {
             }}
             data-chat-input-footer="true"
         >
-            {metricItems.length > 0 ? (
-                <div className="mb-1 flex w-full min-w-0 flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5 px-1 typography-micro text-muted-foreground/70" data-session-metrics="true">
-                    {metricItems.map((item, index) => (
-                        <Tooltip key={`${item}-${index}`}>
-                            <TooltipTrigger asChild>
-                                <span
-                                    className="truncate tabular-nums"
-                                    tabIndex={0}
-                                    title={item}
-                                    aria-label={item}
-                                >
-                                    {item}
-                                </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[min(80vw,32rem)] break-words">
-                                {item}
-                            </TooltipContent>
-                        </Tooltip>
-                    ))}
-                </div>
-            ) : null}
-            <div className={cn('flex w-full items-center', isMobile ? 'gap-x-1.5' : cn('justify-between', footerGapClass))}>
             {isMobile ? (
                 <>
                     <div className="flex w-full items-center justify-between gap-x-1.5">
@@ -299,7 +255,6 @@ export function ComposerFooter(props: ComposerFooterProps) {
                     </div>
                 </>
             )}
-            </div>
         </div>
     );
 }

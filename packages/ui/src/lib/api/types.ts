@@ -799,6 +799,11 @@ export interface TokenUsageBucket {
   total: number;
 }
 
+export interface TokenUsageModelBucket extends TokenUsageBucket {
+  providerID: string;
+  modelID: string;
+}
+
 export interface TokenUsageReport {
   timezone: string;
   month: string;
@@ -806,11 +811,12 @@ export interface TokenUsageReport {
   currentMonth: TokenUsageBucket;
   total: TokenUsageBucket;
   days: Record<string, TokenUsageBucket>;
+  modelsByDay: Record<string, TokenUsageModelBucket[]>;
   fetchedAt: number;
 }
 
 export interface TokenUsageAPI {
-  getReport(month?: string): Promise<TokenUsageReport>;
+  getReport(month?: string, timezone?: string): Promise<TokenUsageReport>;
 }
 
 export interface EditorAPI {

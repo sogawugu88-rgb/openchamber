@@ -21,8 +21,8 @@ import { TokenUsageCalendar } from './TokenUsageCalendar';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { useAllSessionStatuses } from '@/sync/sync-context';
-import type { TokenUsageReport } from '@/lib/api/types';
-import { createTokenUsageRequestCoordinator, getMonthKey, hasSettledUsageTransition, isTokenUsageReportCurrent, isTokenUsageRequestCurrent, shouldReloadTokenUsageMonth } from './tokenUsage';
+import { hasSettledUsageTransition } from './tokenUsage';
+import { useTokenUsageCalendar } from './useTokenUsageCalendar';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -45,73 +45,18 @@ interface ModelInfo {
 export const UsagePage: React.FC = () => {
   const { t } = useI18n();
   const { tokenUsage } = useRuntimeAPIs();
-  const runtimeKey = getRuntimeKey();
   const sessionStatuses = useAllSessionStatuses();
-  const [tokenMonth, setTokenMonth] = React.useState<string | null>(null);
-  const [tokenReport, setTokenReport] = React.useState<{ runtimeKey: string; report: TokenUsageReport } | null>(null);
-  const [tokenLoading, setTokenLoading] = React.useState(true);
-  const [tokenError, setTokenError] = React.useState<string | null>(null);
-  const tokenRequestRef = React.useRef(0);
+  const runtimeKey = getRuntimeKey();
+  const {
+    error: tokenError,
+    loading: tokenLoading,
+    month: tokenMonth,
+    onMonthChange,
+    report: visibleTokenReport,
+    retry: loadTokenUsage,
+  } = useTokenUsageCalendar({ runtimeKey, tokenUsage });
   const refreshScheduledRef = React.useRef(false);
   const previousStatusesRef = React.useRef<Record<string, { type: string }>>({});
-  const initialRequestStartedRef = React.useRef(false);
-  const skipNextMonthRequestRef = React.useRef(false);
-  const previousRuntimeKeyRef = React.useRef(runtimeKey);
-  const tokenRunRef = React.useRef<() => Promise<void>>(() => Promise.resolve());
-  const tokenCoordinatorRef = React.useRef(createTokenUsageRequestCoordinator(() => tokenRunRef.current()));
-
-  tokenRunRef.current = React.useCallback(async () => {
-    const requestId = ++tokenRequestRef.current;
-    setTokenLoading(true);
-    setTokenError(null);
-    const requestedMonth = tokenMonth;
-    const requestRuntimeKey = runtimeKey;
-    await tokenUsage.getReport(requestedMonth ?? undefined)
-      .then((report) => {
-        if (!isTokenUsageRequestCurrent(requestId, tokenRequestRef.current, requestRuntimeKey, getRuntimeKey(), requestedMonth, tokenMonth)) return;
-        if (shouldReloadTokenUsageMonth(requestedMonth, report.month)) {
-          setTokenReport(null);
-          setTokenMonth(report.month);
-          return;
-        }
-        if (requestedMonth === null) skipNextMonthRequestRef.current = true;
-        setTokenMonth(report.month);
-        setTokenReport({ runtimeKey, report });
-      })
-      .catch((cause: unknown) => {
-        if (requestId !== tokenRequestRef.current) return;
-        setTokenError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => {
-        if (requestId === tokenRequestRef.current) setTokenLoading(false);
-      });
-  }, [runtimeKey, tokenMonth, tokenUsage]);
-
-  const loadTokenUsage = React.useCallback(() => {
-    tokenCoordinatorRef.current.request();
-  }, []);
-
-  React.useEffect(() => {
-    if (previousRuntimeKeyRef.current !== runtimeKey) {
-      previousRuntimeKeyRef.current = runtimeKey;
-      tokenRequestRef.current += 1;
-      setTokenReport(null);
-    }
-  }, [runtimeKey]);
-
-  React.useEffect(() => {
-    if (tokenMonth === null) {
-      if (initialRequestStartedRef.current) return;
-      initialRequestStartedRef.current = true;
-      loadTokenUsage();
-      return;
-    }
-    if (skipNextMonthRequestRef.current) {
-      skipNextMonthRequestRef.current = false;
-      return;
-    }
-    loadTokenUsage();
-  }, [loadTokenUsage, runtimeKey, tokenMonth]);
 
   React.useEffect(() => {
     const previous = previousStatusesRef.current;
@@ -128,9 +73,6 @@ export const UsagePage: React.FC = () => {
     });
   }, [loadTokenUsage, sessionStatuses]);
 
-  const visibleTokenReport = tokenReport && tokenMonth && isTokenUsageReportCurrent(tokenReport.report, tokenReport.runtimeKey, tokenMonth, runtimeKey)
-    ? tokenReport.report
-    : null;
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const results = useQuotaStore((state) => state.results);
   const selectedProviderId = useQuotaStore((state) => state.selectedProviderId);
@@ -249,11 +191,7 @@ export const UsagePage: React.FC = () => {
       loading={tokenLoading}
       error={tokenError}
       onRetry={loadTokenUsage}
-      onMonthChange={(offset) => {
-        tokenRequestRef.current += 1;
-        setTokenReport(null);
-        setTokenMonth((current) => current ? getMonthKey(current, offset) : current);
-      }}
+      onMonthChange={onMonthChange}
     />
   );
 

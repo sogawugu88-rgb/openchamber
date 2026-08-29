@@ -33,6 +33,7 @@ const emptyReport = (month) => ({
     total: 0,
   },
   days: {},
+  modelsByDay: {},
   fetchedAt: 1_756_272_000_000,
 });
 
@@ -55,6 +56,40 @@ describe('token usage route', () => {
       .expect(200, report);
 
     expect(service.getReport).toHaveBeenCalledWith({ month: '2026-07' });
+  });
+
+  it('passes a valid client timezone through to the service', async () => {
+    const report = emptyReport('2026-08');
+    const service = { getReport: vi.fn().mockResolvedValue(report) };
+
+    await request(createApp({ service }))
+      .get('/api/openchamber/token-usage?month=2026-08&timezone=Asia%2FShanghai')
+      .expect(200, report);
+
+    expect(service.getReport).toHaveBeenCalledWith({ month: '2026-08', timezone: 'Asia/Shanghai' });
+  });
+
+  it('rejects an invalid client timezone without calling the service', async () => {
+    const service = { getReport: vi.fn() };
+
+    await request(createApp({ service }))
+      .get('/api/openchamber/token-usage?timezone=Not%2FA%2FTimezone')
+      .expect(400, { error: 'timezone must be a valid IANA timezone' });
+
+    expect(service.getReport).not.toHaveBeenCalled();
+  });
+
+  it('defaults the month using the client timezone', async () => {
+    vi.useFakeTimers({ now: new Date('2026-08-31T23:30:00Z') });
+    const report = emptyReport('2026-09');
+    const service = { getReport: vi.fn().mockResolvedValue(report) };
+
+    await request(createApp({ service }))
+      .get('/api/openchamber/token-usage?timezone=Asia%2FShanghai')
+      .expect(200, report);
+
+    expect(service.getReport).toHaveBeenCalledWith({ month: '2026-09', timezone: 'Asia/Shanghai' });
+    vi.useRealTimers();
   });
 
   it('defaults to the current month in the server timezone', async () => {

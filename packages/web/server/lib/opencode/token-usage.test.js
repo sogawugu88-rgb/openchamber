@@ -31,6 +31,7 @@ const assistant = ({ sessionID, id, completed, created, providerID, modelID, ste
 const createService = (responses, timezone = 'UTC') => {
   const openCodeFetch = vi.fn(async (path) => {
     const [basePath] = path.split('?');
+    if (path in responses) return responses[path];
     if (!(basePath in responses)) throw new Error(`Unexpected path: ${path}`);
     return responses[basePath];
   });
@@ -50,7 +51,7 @@ afterEach(() => {
 describe('token usage service', () => {
   it('aggregates two sessions and models, de-duplicates samples, and folds cache components', async () => {
     const { service } = createService({
-      '/session': [
+      '/experimental/session?archived=true': [
         { id: 'session-1' },
         { id: 'session-2' },
       ],
@@ -91,7 +92,7 @@ describe('token usage service', () => {
 
   it('ignores missing usage and clamps invalid token fields to zero', async () => {
     const { service } = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [
         assistant({ sessionID: 'session-1', id: 'without-usage', completed: '2026-08-01T10:00:00Z' }),
         assistant({
@@ -109,7 +110,7 @@ describe('token usage service', () => {
   it('uses the server timezone for today and daily buckets across local midnight', async () => {
     vi.useFakeTimers({ now: new Date('2026-08-02T00:30:00Z') });
     const { service } = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [assistant({
         sessionID: 'session-1', id: 'message-1', completed: '2026-08-01T23:30:00Z',
         tokens: { input: 1, output: 1 },
@@ -124,9 +125,63 @@ describe('token usage service', () => {
     });
   });
 
+  it('uses the requested timezone for today and daily buckets', async () => {
+    vi.useFakeTimers({ now: new Date('2026-08-01T23:45:00Z') });
+    const { service } = createService({
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
+      '/session/session-1/message': [assistant({
+        sessionID: 'session-1', id: 'message-1', completed: '2026-08-01T23:30:00Z',
+        tokens: { input: 1, output: 1 },
+      })],
+    }, 'UTC');
+
+    const report = await service.getReport({ month: '2026-08', timezone: 'Asia/Shanghai' });
+
+    expect(report.timezone).toBe('Asia/Shanghai');
+    expect(report.today).toEqual({ date: '2026-08-02', ...bucket({ input: 1, output: 1, total: 2 }) });
+    expect(report.days).toEqual({
+      '2026-08-02': bucket({ input: 1, output: 1, total: 2 }),
+    });
+  });
+
+  it('aggregates daily usage by provider and model in descending total order', async () => {
+    const { service } = createService({
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
+      '/session/session-1/message': [
+        assistant({
+          sessionID: 'session-1', id: 'model-a-message', completed: '2026-08-02T01:00:00Z',
+          providerID: 'provider-a', modelID: 'model-a',
+          tokens: { input: 1, output: 2 },
+        }),
+        assistant({
+          sessionID: 'session-1', id: 'model-b-message', completed: '2026-08-02T02:00:00Z',
+          providerID: 'provider-b', modelID: 'model-b',
+          tokens: { input: 4, output: 5, reasoning: 6, cache: { read: 7, write: 8 } },
+        }),
+      ],
+    });
+
+    const report = await service.getReport({ month: '2026-08', timezone: 'Asia/Shanghai' });
+
+    expect(report.modelsByDay).toEqual({
+      '2026-08-02': [
+        { providerID: 'provider-b', modelID: 'model-b', input: 4, output: 5, reasoning: 6, cacheRead: 7, cacheWrite: 8, total: 30 },
+        { providerID: 'provider-a', modelID: 'model-a', input: 1, output: 2, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 3 },
+      ],
+    });
+  });
+
+  it('rejects an invalid requested timezone before loading history', async () => {
+    const { service, openCodeFetch } = createService({});
+
+    await expect(service.getReport({ month: '2026-08', timezone: 'Not/A/Timezone' }))
+      .rejects.toThrow('Invalid token usage timezone');
+    expect(openCodeFetch).not.toHaveBeenCalled();
+  });
+
   it('falls back to a valid created timestamp when completed is invalid', async () => {
     const { service } = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [assistant({
         sessionID: 'session-1', id: 'message-1', completed: 'not-a-date',
         created: '2026-08-04T10:00:00Z', tokens: { input: 4 },
@@ -141,7 +196,7 @@ describe('token usage service', () => {
   it('limits daily buckets to the selected month while retaining all-time and current-month totals', async () => {
     vi.useFakeTimers({ now: new Date('2026-08-15T12:00:00Z') });
     const { service } = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [
         assistant({ sessionID: 'session-1', id: 'july', completed: '2026-07-31T12:00:00Z', tokens: { input: 7 } }),
         assistant({ sessionID: 'session-1', id: 'august', completed: '2026-08-03T12:00:00Z', tokens: { output: 8 } }),
@@ -158,7 +213,7 @@ describe('token usage service', () => {
   it('aggregates today independently when the selected month is historical', async () => {
     vi.useFakeTimers({ now: new Date('2026-08-15T12:00:00Z') });
     const { service } = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [
         assistant({ sessionID: 'session-1', id: 'july', completed: '2026-07-31T12:00:00Z', tokens: { input: 7 } }),
         assistant({ sessionID: 'session-1', id: 'today', completed: '2026-08-15T10:00:00Z', tokens: { output: 8 } }),
@@ -172,7 +227,7 @@ describe('token usage service', () => {
   });
 
   it('returns a successful empty report for complete history without usage', async () => {
-    const { service } = createService({ '/session': [] });
+    const { service } = createService({ '/experimental/session?archived=true': [] });
 
     await expect(service.getReport({ month: '2026-08' })).resolves.toMatchObject({
       total: bucket(),
@@ -185,7 +240,7 @@ describe('token usage service', () => {
     const openCodeFetch = vi.fn(async (path) => {
       const url = new URL(path, 'http://opencode.test');
       const cursor = url.searchParams.get('cursor');
-      if (url.pathname === '/session') {
+      if (url.pathname === '/experimental/session') {
         return cursor
           ? { data: [{ id: 'session-2' }], nextCursor: null }
           : { data: [{ id: 'session-1' }], nextCursor: 'session-page-2' };
@@ -213,8 +268,8 @@ describe('token usage service', () => {
       },
     });
     expect(openCodeFetch.mock.calls.map(([path]) => path)).toEqual([
-      '/session',
-      '/session?cursor=session-page-2',
+      '/experimental/session?archived=true',
+      '/experimental/session?archived=true&cursor=session-page-2',
       '/session/session-1/message',
       '/session/session-1/message?cursor=message-page-2',
       '/session/session-2/message',
@@ -239,14 +294,14 @@ describe('token usage service', () => {
   });
 
   it('rejects fetch failures and malformed source records', async () => {
-    const failed = createService({ '/session': Promise.reject(new Error('offline')) });
+    const failed = createService({ '/experimental/session?archived=true': Promise.reject(new Error('offline')) });
     await expect(failed.service.getReport({ month: '2026-08' })).rejects.toThrow('offline');
 
-    const malformed = createService({ '/session': { data: [] } });
+    const malformed = createService({ '/experimental/session?archived=true': { data: [] } });
     await expect(malformed.service.getReport({ month: '2026-08' })).rejects.toThrow(/session/i);
 
     const malformedMessage = createService({
-      '/session': [{ id: 'session-1' }],
+      '/experimental/session?archived=true': [{ id: 'session-1' }],
       '/session/session-1/message': [{ info: null }],
     });
     await expect(malformedMessage.service.getReport({ month: '2026-08' })).rejects.toThrow(/message/i);

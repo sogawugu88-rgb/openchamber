@@ -51,9 +51,19 @@ export type SessionMetrics = {
   outputTokensPerSecond?: number;
 };
 
+export const shouldRenderSessionMetrics = (showSessionTokenDetails: boolean, metricCount: number): boolean =>
+  showSessionTokenDetails && metricCount > 0;
+
 const finiteNonNegative = (value: number | undefined): number => {
   if (value === undefined || !Number.isFinite(value) || value < 0) return 0;
   return value;
+};
+
+export const formatSessionTokenCount = (value: number): string => {
+  if (value < 1_000) return value.toLocaleString();
+  if (value < 1_000_000) return `${Number((value / 1_000).toFixed(1))}K`;
+  if (value < 1_000_000_000) return `${Number((value / 1_000_000).toFixed(2))}M`;
+  return `${Number((value / 1_000_000_000).toFixed(2))}B`;
 };
 
 const readTokens = (record: SessionMessageRecord): TokenValue | null => {

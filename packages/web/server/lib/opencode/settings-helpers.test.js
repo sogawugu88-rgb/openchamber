@@ -66,6 +66,33 @@ describe('settings helpers', () => {
     expect(helpers.sanitizeSettingsUpdate({ draftStartersVisible: 'false' })).toEqual({});
   });
 
+  it('sanitizes the Goal audit failure limit', () => {
+    const helpers = createTestHelpers();
+
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: 1 })).toEqual({ sessionGoalAuditFailureLimit: 1 });
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: 20 })).toEqual({ sessionGoalAuditFailureLimit: 20 });
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: 0 })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: 21 })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: 2.5 })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ sessionGoalAuditFailureLimit: '2' })).toEqual({});
+    expect(helpers.formatSettingsResponse({}).sessionGoalAuditFailureLimit).toBe(2);
+  });
+
+  it('sanitizes the code-server base URL', () => {
+    const helpers = createTestHelpers();
+
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: ' https://code.example.com/ ' })).toEqual({
+      codeServerBaseUrl: 'https://code.example.com/',
+    });
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: 'https://code.example.com/code/?auth=1' })).toEqual({
+      codeServerBaseUrl: 'https://code.example.com/code?auth=1',
+    });
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: '' })).toEqual({ codeServerBaseUrl: '' });
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: 'javascript:alert(1)' })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: 'https://user:password@code.example.com' })).toEqual({});
+    expect(helpers.sanitizeSettingsUpdate({ codeServerBaseUrl: '/workspace/code' })).toEqual({});
+  });
+
   it('sanitizes shared sidebar display preferences', () => {
     const helpers = createTestHelpers();
 

@@ -513,6 +513,7 @@ describe('updateDesktopSettings', () => {
     expect(saves).toEqual([{
       draftStartersCraftGoalAdded: true,
       draftStartersScheduleTaskAdded: true,
+      showSessionTokenDetails: true,
       sidebarProjectDisplayMode: 'single',
       sidebarSessionGroupingMode: 'flat',
       sidebarProjectSortOrder: 'a-z',
@@ -786,6 +787,39 @@ describe('updateDesktopSettings', () => {
     await syncDesktopSettings();
 
     expect(useUIStore.getState().autoSaveEnabled).toBe(false);
+  });
+
+  test('applies the persisted Composer token-details visibility setting', async () => {
+    getWindow();
+    invalidateSettingsCache();
+    registerSettingsApi(async () => ({}), async () => ({
+      settings: { showSessionTokenDetails: false, draftStartersCraftGoalAdded: true, draftStartersScheduleTaskAdded: true },
+      source: 'web',
+    }));
+
+    await syncDesktopSettings();
+
+    expect(useUIStore.getState().showSessionTokenDetails).toBe(false);
+  });
+
+  test('preserves and seeds a local Composer token-details preference when the server omits it', async () => {
+    getWindow();
+    invalidateSettingsCache();
+    useUIStore.getState().setShowSessionTokenDetails(false);
+    const saveCalls: Array<Partial<SettingsPayload>> = [];
+    registerSettingsApi(async (changes) => {
+      saveCalls.push(changes);
+      return { ...changes } as SettingsPayload;
+    }, async () => ({
+      settings: { draftStartersCraftGoalAdded: true, draftStartersScheduleTaskAdded: true },
+      source: 'web',
+    }));
+
+    await syncDesktopSettings();
+    await delay(500);
+
+    expect(useUIStore.getState().showSessionTokenDetails).toBe(false);
+    expect(saveCalls.some((changes) => changes.showSessionTokenDetails === false)).toBe(true);
   });
 
   test('autosaves autoSaveEnabled changes to shared settings', async () => {

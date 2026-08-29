@@ -10,6 +10,7 @@ const report: TokenUsageReport = {
   currentMonth: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   total: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   days: {},
+  modelsByDay: {},
   fetchedAt: 1,
 };
 
@@ -23,8 +24,8 @@ beforeEach(() => {
 
 describe('web token usage API', () => {
   it('composes a typed token usage API that fetches the OpenChamber route', async () => {
-    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).resolves.toEqual(report);
-    expect(mockRuntimeFetch).toHaveBeenCalledWith('/api/openchamber/token-usage', { query: { month: '2026-08' } });
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08', 'Asia/Shanghai')).resolves.toEqual(report);
+    expect(mockRuntimeFetch).toHaveBeenCalledWith('/api/openchamber/token-usage', { query: { month: '2026-08', timezone: 'Asia/Shanghai' } });
   });
 
   it('requests the server default month when no month is selected', async () => {
@@ -64,6 +65,28 @@ describe('web token usage API', () => {
 
   it('rejects a report whose month differs from the requested month', async () => {
     mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, month: '2026-07' }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
+  });
+
+  it('parses provider and model details for each usage date', async () => {
+    const model = { providerID: 'provider-a', modelID: 'model-a', input: 2, output: 3, reasoning: 4, cacheRead: 5, cacheWrite: 6, total: 20 };
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      ...report,
+      days: { '2026-08-01': { ...report.total, total: 20 } },
+      modelsByDay: { '2026-08-01': [model] },
+    }), { status: 200 }));
+
+    await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).resolves.toMatchObject({
+      modelsByDay: { '2026-08-01': [model] },
+    });
+  });
+
+  it('rejects malformed provider and model details', async () => {
+    mockRuntimeFetch.mockResolvedValueOnce(new Response(JSON.stringify({
+      ...report,
+      modelsByDay: { '2026-08-01': [{ ...report.total, providerID: 'provider-a' }] },
+    }), { status: 200 }));
 
     await expect(runtimeAPIs.tokenUsage.getReport('2026-08')).rejects.toThrow('invalid data format');
   });

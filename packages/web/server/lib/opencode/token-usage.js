@@ -7,6 +7,7 @@ const EMPTY_BUCKET = Object.freeze({
   total: 0,
 });
 const MAX_PAGINATION_PAGES = 1000;
+const GLOBAL_SESSION_LIST_PATH = '/experimental/session?archived=true';
 
 const createBucket = () => ({ ...EMPTY_BUCKET });
 
@@ -28,6 +29,8 @@ const addSample = (target, sample) => {
   target.cacheWrite += sample.cacheWrite;
   target.total += sample.total;
 };
+
+const compareText = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 
 const normalizeMessage = (record, sessionID) => {
   if (record?.constructor !== Object || record.info?.constructor !== Object) {
@@ -62,6 +65,8 @@ const normalizeMessage = (record, sessionID) => {
     key: `${sessionID}:${id}:${info.step ?? ''}`,
     timestamp,
     sample,
+    providerID: info.providerID?.constructor === String ? info.providerID.trim() : '',
+    modelID: info.modelID?.constructor === String ? info.modelID.trim() : '',
   };
 };
 
@@ -74,6 +79,15 @@ const localDate = (timestamp, timezone) => new Intl.DateTimeFormat('en-CA', {
 
 const currentLocalDate = (timezone) => localDate(Date.now(), timezone);
 
+const isValidTimezone = (timezone) => {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const fetchAllPages = async (openCodeFetch, path, label) => {
   const records = [];
   let cursor;
@@ -83,7 +97,7 @@ const fetchAllPages = async (openCodeFetch, path, label) => {
   do {
     pageCount += 1;
     if (pageCount > MAX_PAGINATION_PAGES) throw new Error(`OpenCode ${label} pagination limit exceeded`);
-    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const query = cursor ? `${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : '';
     const response = await openCodeFetch(`${path}${query}`);
     const isPage = response?.constructor === Object && 'data' in response && 'nextCursor' in response;
     const data = Array.isArray(response) ? response : isPage ? response.data : null;
@@ -104,13 +118,16 @@ const fetchAllPages = async (openCodeFetch, path, label) => {
 };
 
 export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) => {
-  const getReport = async ({ month }) => {
+  const getReport = async ({ month, timezone }) => {
     if (!month?.match?.(/^\d{4}-\d{2}$/)) {
       throw new Error('Invalid token usage month');
     }
 
-    const timezone = getServerTimezone();
-    const sessions = await fetchAllPages(openCodeFetch, '/session', 'session list');
+    const reportTimezone = timezone || getServerTimezone();
+    if (!isValidTimezone(reportTimezone)) {
+      throw new Error('Invalid token usage timezone');
+    }
+    const sessions = await fetchAllPages(openCodeFetch, GLOBAL_SESSION_LIST_PATH, 'session list');
     const samples = [];
     const seen = new Set();
 
@@ -132,30 +149,51 @@ export const createTokenUsageService = ({ openCodeFetch, getServerTimezone }) =>
       }
     }
 
-    const todayDate = currentLocalDate(timezone);
+    const todayDate = currentLocalDate(reportTimezone);
     const currentMonth = todayDate.slice(0, 7);
     const total = createBucket();
     const currentMonthTotal = createBucket();
     const todayTotal = createBucket();
     const days = {};
+    const modelBucketsByDay = {};
 
     for (const sample of samples) {
       addSample(total, sample.sample);
-      const date = localDate(sample.timestamp, timezone);
+      const date = localDate(sample.timestamp, reportTimezone);
       if (date.slice(0, 7) === currentMonth) addSample(currentMonthTotal, sample.sample);
       if (date === todayDate) addSample(todayTotal, sample.sample);
       if (date.slice(0, 7) !== month) continue;
       days[date] ??= createBucket();
       addSample(days[date], sample.sample);
+      if (!sample.providerID || !sample.modelID) continue;
+      modelBucketsByDay[date] ??= new Map();
+      const modelKey = `${sample.providerID}\u0000${sample.modelID}`;
+      const modelBucket = modelBucketsByDay[date].get(modelKey) ?? {
+        providerID: sample.providerID,
+        modelID: sample.modelID,
+        ...createBucket(),
+      };
+      addSample(modelBucket, sample.sample);
+      modelBucketsByDay[date].set(modelKey, modelBucket);
     }
 
+    const modelsByDay = Object.fromEntries(Object.entries(modelBucketsByDay).map(([date, modelBuckets]) => [
+      date,
+      [...modelBuckets.values()].sort((left, right) => (
+        right.total - left.total
+        || compareText(left.providerID, right.providerID)
+        || compareText(left.modelID, right.modelID)
+      )),
+    ]));
+
     return {
-      timezone,
+      timezone: reportTimezone,
       month,
       today: { date: todayDate, ...todayTotal },
       currentMonth: currentMonthTotal,
       total,
       days,
+      modelsByDay,
       fetchedAt: Date.now(),
     };
   };

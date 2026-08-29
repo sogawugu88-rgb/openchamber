@@ -32,6 +32,9 @@ export const createSettingsHelpers = (dependencies) => {
   const SIDEBAR_PROJECT_DISPLAY_MODE_VALUES = new Set(['all', 'single']);
   const SIDEBAR_SESSION_GROUPING_MODE_VALUES = new Set(['by-worktree', 'flat']);
   const SIDEBAR_PROJECT_SORT_ORDER_VALUES = new Set(['manual', 'a-z', 'z-a', 'date-added', 'recent']);
+  const SESSION_GOAL_AUDIT_FAILURE_LIMIT_DEFAULT = 2;
+  const SESSION_GOAL_AUDIT_FAILURE_LIMIT_MIN = 1;
+  const SESSION_GOAL_AUDIT_FAILURE_LIMIT_MAX = 20;
   const HIDDEN_MODELS_MAX = 1024;
   const RECENT_EFFORTS_MAX_KEYS = 128;
   const RECENT_EFFORTS_MAX_VARIANTS_PER_KEY = 5;
@@ -48,6 +51,22 @@ export const createSettingsHelpers = (dependencies) => {
       result[key.slice(0, SHORTCUT_OVERRIDE_KEY_MAX_LENGTH)] = combo.slice(0, SHORTCUT_OVERRIDE_VALUE_MAX_LENGTH);
     }
     return result;
+  };
+
+  const normalizeCodeServerBaseUrl = (value) => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    try {
+      const url = new URL(trimmed);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      if (url.username || url.password) return null;
+      url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+      return url.toString();
+    } catch {
+      return null;
+    }
   };
 
   const sanitizeRecentEfforts = (value) => {
@@ -327,6 +346,17 @@ export const createSettingsHelpers = (dependencies) => {
     }
     if (typeof candidate.sessionGoalEnabled === 'boolean') {
       result.sessionGoalEnabled = candidate.sessionGoalEnabled;
+    }
+    if (typeof candidate.codeServerBaseUrl === 'string') {
+      const codeServerBaseUrl = normalizeCodeServerBaseUrl(candidate.codeServerBaseUrl);
+      if (codeServerBaseUrl !== null) {
+        result.codeServerBaseUrl = codeServerBaseUrl;
+      }
+    }
+    if (Number.isSafeInteger(candidate.sessionGoalAuditFailureLimit)
+      && candidate.sessionGoalAuditFailureLimit >= SESSION_GOAL_AUDIT_FAILURE_LIMIT_MIN
+      && candidate.sessionGoalAuditFailureLimit <= SESSION_GOAL_AUDIT_FAILURE_LIMIT_MAX) {
+      result.sessionGoalAuditFailureLimit = candidate.sessionGoalAuditFailureLimit;
     }
     if (typeof candidate.sessionGoalDefaultBudgetEnabled === 'boolean') {
       result.sessionGoalDefaultBudgetEnabled = candidate.sessionGoalDefaultBudgetEnabled;
@@ -927,6 +957,7 @@ export const createSettingsHelpers = (dependencies) => {
 
     return {
       ...sanitized,
+      sessionGoalAuditFailureLimit: sanitized.sessionGoalAuditFailureLimit ?? SESSION_GOAL_AUDIT_FAILURE_LIMIT_DEFAULT,
       hasManagedRemoteTunnelToken,
       // Tells the client whether agent memory exists in this build at all, so
       // its settings row and panel tab can be absent rather than merely off.

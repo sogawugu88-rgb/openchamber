@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   buildMonthCalendar,
+  formatCalendarTokenCount,
   formatTokenCount,
   getMonthKey,
   isTokenUsageReportCurrent,
@@ -9,6 +10,8 @@ import {
   createTokenUsageRequestCoordinator,
   shouldReloadTokenUsageMonth,
   isTokenUsageRequestCurrent,
+  getRecentUsageDays,
+  getSelectedDayModelUsage,
 } from './tokenUsage';
 import type { TokenUsageReport } from '@/lib/api/types';
 
@@ -42,11 +45,43 @@ describe('token usage helpers', () => {
     expect(getUsageIntensity(100, 0)).toBe(0);
   });
 
+  test('returns the most recent populated days and their model breakdown', () => {
+    const bucket = { input: 1, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0, total: 2 };
+    const report = {
+      timezone: 'UTC',
+      month: '2026-08',
+      today: { ...bucket, date: '2026-08-28' },
+      currentMonth: bucket,
+      total: bucket,
+      days: {
+        '2026-08-28': bucket,
+        '2026-08-27': { ...bucket, total: 6 },
+        '2026-08-25': { ...bucket, total: 4 },
+        '2026-08-01': { ...bucket, total: 1 },
+      },
+      modelsByDay: {
+        '2026-08-27': [{ providerID: 'provider-a', modelID: 'model-a', ...bucket, total: 6 }],
+      },
+      fetchedAt: 1,
+    };
+
+    expect(getRecentUsageDays(report, 3)).toEqual(['2026-08-28', '2026-08-27', '2026-08-25']);
+    expect(getRecentUsageDays(report, 14)).toHaveLength(4);
+    expect(getSelectedDayModelUsage(report, '2026-08-27')).toEqual(report.modelsByDay['2026-08-27']);
+    expect(getSelectedDayModelUsage(report, '2026-08-24')).toEqual([]);
+  });
+
   test('formats token counts with compact units while keeping small values exact', () => {
     expect(formatTokenCount(0)).toBe('0');
     expect(formatTokenCount(999)).toBe('999');
     expect(formatTokenCount(1_000)).toBe('1k');
     expect(formatTokenCount(1_250_000)).toBe('1.25M');
+  });
+
+  test('formats calendar token counts tightly enough for narrow cells', () => {
+    expect(formatCalendarTokenCount(52_690)).toBe('52.7K');
+    expect(formatCalendarTokenCount(215_910_000)).toBe('216M');
+    expect(formatCalendarTokenCount(3_540_000_000)).toBe('3.54B');
   });
 
   test('moves between month boundaries without browser date arithmetic', () => {
@@ -63,6 +98,7 @@ describe('token usage helpers', () => {
       currentMonth: bucket,
       total: bucket,
       days: {},
+      modelsByDay: {},
       fetchedAt: 0,
     };
 
