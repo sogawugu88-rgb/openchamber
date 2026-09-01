@@ -35,6 +35,7 @@ export const createSettingsHelpers = (dependencies) => {
   const HIDDEN_MODELS_MAX = 1024;
   const RECENT_EFFORTS_MAX_KEYS = 128;
   const RECENT_EFFORTS_MAX_VARIANTS_PER_KEY = 5;
+  const SESSION_AUTO_CONTINUE_PROMPT_MAX_LENGTH = 2_000;
 
   const sanitizeShortcutOverrides = (value) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -333,6 +334,15 @@ export const createSettingsHelpers = (dependencies) => {
     }
     if (typeof candidate.sessionGoalDefaultBudget === 'number' && Number.isFinite(candidate.sessionGoalDefaultBudget) && candidate.sessionGoalDefaultBudget > 0) {
       result.sessionGoalDefaultBudget = Math.floor(candidate.sessionGoalDefaultBudget);
+    }
+    if (typeof candidate.sessionAutoContinueEnabled === 'boolean') {
+      result.sessionAutoContinueEnabled = candidate.sessionAutoContinueEnabled;
+    }
+    if (typeof candidate.sessionAutoContinueMaxRetries === 'number' && Number.isFinite(candidate.sessionAutoContinueMaxRetries)) {
+      result.sessionAutoContinueMaxRetries = Math.max(0, Math.floor(candidate.sessionAutoContinueMaxRetries));
+    }
+    if (typeof candidate.sessionAutoContinuePrompt === 'string') {
+      result.sessionAutoContinuePrompt = candidate.sessionAutoContinuePrompt.trim().slice(0, SESSION_AUTO_CONTINUE_PROMPT_MAX_LENGTH);
     }
     if (typeof candidate.collapsibleThinkingBlocks === 'boolean') {
       result.collapsibleThinkingBlocks = candidate.collapsibleThinkingBlocks;

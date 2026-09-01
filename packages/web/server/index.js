@@ -76,6 +76,7 @@ import { configureOpenCodeRuntimeProviders, resetOpenCodeRuntimeProviders } from
 import { createOpenCodeWatcherRuntime } from './lib/opencode/watcher.js';
 import { createSessionAssistRuntime } from './lib/session-assist/runtime.js';
 import { createSessionGoalRuntime } from './lib/session-goal/runtime.js';
+import { createSessionAutoRetryRuntime } from './lib/session-auto-retry/runtime.js';
 import { createContextObligatoryRuntime } from './lib/context-obligatory/runtime.js';
 import { createSessionKnowledgeRuntime } from './lib/session-knowledge/runtime.js';
 import { createScheduledTasksRuntime } from './lib/scheduled-tasks/runtime.js';
@@ -819,6 +820,11 @@ const sessionGoalRuntime = createSessionGoalRuntime({
     });
   },
 });
+const sessionAutoRetryRuntime = createSessionAutoRetryRuntime({
+  buildOpenCodeUrl,
+  getOpenCodeAuthHeaders,
+  readSettings: readSettingsFromDiskStrict,
+});
 /**
  * Owns what a session must be told about the project's knowledge. Every sender
  * asks it — the UI over HTTP, scheduled tasks and agent-dispatched sessions in
@@ -900,6 +906,7 @@ globalMessageStreamHub.subscribeEvent((event) => {
     : '';
   sessionAssistRuntime.processPayload(payload, directory);
   sessionGoalRuntime.processPayload(payload, directory);
+  sessionAutoRetryRuntime.processPayload(payload, directory);
   contextObligatoryRuntime.processPayload(payload, directory);
 });
 
@@ -1422,6 +1429,7 @@ const gracefulShutdownRuntime = createGracefulShutdownRuntime({
   openCodeWatcherRuntime,
   sessionAssistRuntime,
   sessionGoalRuntime,
+  sessionAutoRetryRuntime,
   contextObligatoryRuntime,
   sessionRuntime,
   getHealthCheckInterval: () => healthCheckInterval,

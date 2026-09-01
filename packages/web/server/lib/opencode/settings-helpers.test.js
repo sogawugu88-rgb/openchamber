@@ -96,6 +96,26 @@ describe('settings helpers', () => {
     expect(helpers.sanitizeSettingsUpdate({ wideChatLayoutEnabled: 'true' })).toEqual({});
   });
 
+  it('sanitizes automatic continuation settings', () => {
+    const helpers = createTestHelpers();
+    const prompt = '  Continue from the current state.  ';
+
+    expect(helpers.sanitizeSettingsUpdate({
+      sessionAutoContinueEnabled: true,
+      sessionAutoContinueMaxRetries: 9,
+      sessionAutoContinuePrompt: prompt,
+    })).toEqual({
+      sessionAutoContinueEnabled: true,
+      sessionAutoContinueMaxRetries: 9,
+      sessionAutoContinuePrompt: 'Continue from the current state.',
+    });
+    expect(helpers.sanitizeSettingsUpdate({
+      sessionAutoContinueEnabled: 'true',
+      sessionAutoContinueMaxRetries: '5',
+      sessionAutoContinuePrompt: 42,
+    })).toEqual({});
+  });
+
   it('accepts only booleans for collapsible user messages', () => {
     const helpers = createTestHelpers();
 

@@ -691,6 +691,9 @@ interface UIStore {
   sessionGoalEnabled: boolean;
   sessionGoalDefaultBudgetEnabled: boolean;
   sessionGoalDefaultBudget: number;
+  sessionAutoContinueEnabled: boolean;
+  sessionAutoContinueMaxRetries: number;
+  sessionAutoContinuePrompt: string;
   collapsibleThinkingBlocks: boolean;
   chatRenderMode: ChatRenderMode;
   activityRenderMode: ActivityRenderMode;
@@ -878,6 +881,9 @@ interface UIStore {
   setSessionGoalEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudgetEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudget: (value: number) => void;
+  setSessionAutoContinueEnabled: (value: boolean) => void;
+  setSessionAutoContinueMaxRetries: (value: number) => void;
+  setSessionAutoContinuePrompt: (value: string) => void;
   setCollapsibleThinkingBlocks: (value: boolean) => void;
   setChatRenderMode: (value: ChatRenderMode) => void;
   setActivityRenderMode: (value: ActivityRenderMode) => void;
@@ -1048,6 +1054,9 @@ export const useUIStore = create<UIStore>()(
         sessionGoalEnabled: true,
         sessionGoalDefaultBudgetEnabled: false,
         sessionGoalDefaultBudget: 200_000,
+        sessionAutoContinueEnabled: true,
+        sessionAutoContinueMaxRetries: 5,
+        sessionAutoContinuePrompt: '',
         collapsibleThinkingBlocks: true,
         chatRenderMode: 'live',
         activityRenderMode: 'summary',
@@ -1805,6 +1814,18 @@ export const useUIStore = create<UIStore>()(
 
         setSessionGoalDefaultBudget: (value) => {
           set({ sessionGoalDefaultBudget: value });
+        },
+
+        setSessionAutoContinueEnabled: (value) => {
+          set({ sessionAutoContinueEnabled: value });
+        },
+
+        setSessionAutoContinueMaxRetries: (value) => {
+          set({ sessionAutoContinueMaxRetries: value });
+        },
+
+        setSessionAutoContinuePrompt: (value) => {
+          set({ sessionAutoContinuePrompt: value });
         },
 
         setCollapsibleThinkingBlocks: (value) => {
@@ -2686,6 +2707,9 @@ export const useUIStore = create<UIStore>()(
           sessionGoalEnabled: state.sessionGoalEnabled,
           sessionGoalDefaultBudgetEnabled: state.sessionGoalDefaultBudgetEnabled,
           sessionGoalDefaultBudget: state.sessionGoalDefaultBudget,
+          sessionAutoContinueEnabled: state.sessionAutoContinueEnabled,
+          sessionAutoContinueMaxRetries: state.sessionAutoContinueMaxRetries,
+          sessionAutoContinuePrompt: state.sessionAutoContinuePrompt,
           collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
           chatRenderMode: state.chatRenderMode,
           activityRenderMode: state.activityRenderMode,

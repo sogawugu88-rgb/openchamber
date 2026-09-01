@@ -708,7 +708,13 @@ describe('updateDesktopSettings', () => {
     useUIStore.getState().setTerminalShell('auto');
     useUIStore.getState().setTerminalLoginShells([]);
     registerSettingsApi(async () => ({}), async () => ({
-      settings: { terminalShell: 'zsh', terminalLoginShells: ['zsh', 'fish'] },
+      settings: {
+        terminalShell: 'zsh',
+        terminalLoginShells: ['zsh', 'fish'],
+        sessionAutoContinueEnabled: false,
+        sessionAutoContinueMaxRetries: 9,
+        sessionAutoContinuePrompt: 'Keep going from the current state.',
+      },
       source: 'web',
     }));
 
@@ -716,6 +722,9 @@ describe('updateDesktopSettings', () => {
 
     expect(useUIStore.getState().terminalShell).toBe('zsh');
     expect(useUIStore.getState().terminalLoginShells).toEqual(['zsh', 'fish']);
+    expect(useUIStore.getState().sessionAutoContinueEnabled).toBe(false);
+    expect(useUIStore.getState().sessionAutoContinueMaxRetries).toBe(9);
+    expect(useUIStore.getState().sessionAutoContinuePrompt).toBe('Keep going from the current state.');
   });
 
   test('autosaves all model selector settings fields', async () => {
@@ -759,6 +768,11 @@ describe('updateDesktopSettings', () => {
     getWindow();
     useUIStore.getState().setTerminalShell('auto');
     useUIStore.getState().setTerminalLoginShells([]);
+    useUIStore.setState({
+      sessionAutoContinueEnabled: true,
+      sessionAutoContinueMaxRetries: 5,
+      sessionAutoContinuePrompt: '',
+    });
     const saveCalls: Array<Partial<SettingsPayload>> = [];
     registerSettingsSave(async (changes) => {
       saveCalls.push(changes);
@@ -768,10 +782,20 @@ describe('updateDesktopSettings', () => {
 
     useUIStore.getState().setTerminalShell('zsh');
     useUIStore.getState().setTerminalLoginShells(['zsh']);
+    useUIStore.setState({
+      sessionAutoContinueEnabled: false,
+      sessionAutoContinueMaxRetries: 3,
+      sessionAutoContinuePrompt: 'Continue from the current state.',
+    });
     await delay(500);
 
     expect(saveCalls.some((changes) => changes.terminalShell === 'zsh')).toBe(true);
     expect(saveCalls.some((changes) => changes.terminalLoginShells?.includes('zsh'))).toBe(true);
+    expect(saveCalls.some((changes) => (
+      changes.sessionAutoContinueEnabled === false
+      && changes.sessionAutoContinueMaxRetries === 3
+      && changes.sessionAutoContinuePrompt === 'Continue from the current state.'
+    ))).toBe(true);
   });
 
   test('applies persisted autoSaveEnabled from server settings', async () => {

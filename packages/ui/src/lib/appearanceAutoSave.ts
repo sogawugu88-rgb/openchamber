@@ -15,6 +15,9 @@ type AppearanceSlice = {
   sessionGoalEnabled: boolean;
   sessionGoalDefaultBudgetEnabled: boolean;
   sessionGoalDefaultBudget: number;
+  sessionAutoContinueEnabled: boolean;
+  sessionAutoContinueMaxRetries: number;
+  sessionAutoContinuePrompt: string;
   collapsibleThinkingBlocks: boolean;
   showDeletionDialog: boolean;
   nativeNotificationsEnabled: boolean;
@@ -71,6 +74,9 @@ export const startAppearanceAutoSave = (): void => {
     sessionGoalEnabled: useUIStore.getState().sessionGoalEnabled,
     sessionGoalDefaultBudgetEnabled: useUIStore.getState().sessionGoalDefaultBudgetEnabled,
     sessionGoalDefaultBudget: useUIStore.getState().sessionGoalDefaultBudget,
+    sessionAutoContinueEnabled: useUIStore.getState().sessionAutoContinueEnabled,
+    sessionAutoContinueMaxRetries: useUIStore.getState().sessionAutoContinueMaxRetries,
+    sessionAutoContinuePrompt: useUIStore.getState().sessionAutoContinuePrompt,
     collapsibleThinkingBlocks: useUIStore.getState().collapsibleThinkingBlocks,
     showDeletionDialog: useUIStore.getState().showDeletionDialog,
     nativeNotificationsEnabled: useUIStore.getState().nativeNotificationsEnabled,
@@ -114,6 +120,9 @@ export const startAppearanceAutoSave = (): void => {
       sessionGoalEnabled: state.sessionGoalEnabled,
       sessionGoalDefaultBudgetEnabled: state.sessionGoalDefaultBudgetEnabled,
       sessionGoalDefaultBudget: state.sessionGoalDefaultBudget,
+      sessionAutoContinueEnabled: state.sessionAutoContinueEnabled,
+      sessionAutoContinueMaxRetries: state.sessionAutoContinueMaxRetries,
+      sessionAutoContinuePrompt: state.sessionAutoContinuePrompt,
       collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
       showDeletionDialog: state.showDeletionDialog,
       nativeNotificationsEnabled: state.nativeNotificationsEnabled,
@@ -176,6 +185,15 @@ export const startAppearanceAutoSave = (): void => {
     }
     if (current.sessionGoalDefaultBudget !== previous.sessionGoalDefaultBudget) {
       diff.sessionGoalDefaultBudget = current.sessionGoalDefaultBudget;
+    }
+    if (current.sessionAutoContinueEnabled !== previous.sessionAutoContinueEnabled) {
+      diff.sessionAutoContinueEnabled = current.sessionAutoContinueEnabled;
+    }
+    if (current.sessionAutoContinueMaxRetries !== previous.sessionAutoContinueMaxRetries) {
+      diff.sessionAutoContinueMaxRetries = current.sessionAutoContinueMaxRetries;
+    }
+    if (current.sessionAutoContinuePrompt !== previous.sessionAutoContinuePrompt) {
+      diff.sessionAutoContinuePrompt = current.sessionAutoContinuePrompt;
     }
     if (current.collapsibleThinkingBlocks !== previous.collapsibleThinkingBlocks) {
       diff.collapsibleThinkingBlocks = current.collapsibleThinkingBlocks;

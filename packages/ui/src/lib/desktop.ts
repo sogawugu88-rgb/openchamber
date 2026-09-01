@@ -137,6 +137,9 @@ export type DesktopSettings = {
   sessionGoalEnabled?: boolean;
   sessionGoalDefaultBudgetEnabled?: boolean;
   sessionGoalDefaultBudget?: number;
+  sessionAutoContinueEnabled?: boolean;
+  sessionAutoContinueMaxRetries?: number;
+  sessionAutoContinuePrompt?: string;
   smallModelOverride?: string; // format: "provider/model"
   // The walkthrough needs structured output and a roomy context, which the
   // small model is often deliberately not chosen for. Unset means "use the

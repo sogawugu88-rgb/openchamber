@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/number-input';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Select,
     SelectContent,
@@ -267,7 +268,7 @@ const normalizeUserMessageRenderingMode = (mode: unknown): 'markdown' | 'plain' 
     return mode === 'markdown' ? 'markdown' : 'plain';
 };
 
-type VisibleSetting = 'sessionAssist' | 'sessionGoal' | 'theme' | 'windowControlsPosition' | 'pwaInstallName' | 'pwaOrientation' | 'mobileKeyboardMode' | 'timeFormat' | 'weekStart' | 'fontSize' | 'terminalFontSize' | 'terminalShell' | 'terminalLoginShell' | 'editorFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'messageTransport' | 'activityRenderMode' | 'collapsibleUserMessages' | 'stickyUserHeader' | 'promptNavigatorEnabled' | 'wideChatLayout' | 'codeBlockLineWrap' | 'splitAssistantMessageActions' | 'subagentReadOnlyBanner' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'fileViewerPreview' | 'reasoning' | 'showToolFileIcons' | 'showTurnChangedFiles' | 'expandedTools' | 'followUpBehavior' | 'terminalQuickKeys' | 'fileEditorKeymap' | 'persistDraft' | 'inputSpellcheck' | 'reportUsage' | 'autoSaveEnabled' | 'sessionTabs';
+type VisibleSetting = 'sessionAssist' | 'sessionGoal' | 'sessionAutoContinue' | 'theme' | 'windowControlsPosition' | 'pwaInstallName' | 'pwaOrientation' | 'mobileKeyboardMode' | 'timeFormat' | 'weekStart' | 'fontSize' | 'terminalFontSize' | 'terminalShell' | 'terminalLoginShell' | 'editorFontSize' | 'spacing' | 'inputBarOffset' | 'mermaidRendering' | 'userMessageRendering' | 'chatRenderMode' | 'messageTransport' | 'activityRenderMode' | 'collapsibleUserMessages' | 'stickyUserHeader' | 'promptNavigatorEnabled' | 'wideChatLayout' | 'codeBlockLineWrap' | 'splitAssistantMessageActions' | 'subagentReadOnlyBanner' | 'diffLayout' | 'mobileStatusBar' | 'dotfiles' | 'fileViewerPreview' | 'reasoning' | 'showToolFileIcons' | 'showTurnChangedFiles' | 'expandedTools' | 'followUpBehavior' | 'terminalQuickKeys' | 'fileEditorKeymap' | 'persistDraft' | 'inputSpellcheck' | 'reportUsage' | 'autoSaveEnabled' | 'sessionTabs';
 
 const WINDOW_CONTROLS_POSITION_OPTIONS: Array<{ id: DesktopWindowControlsPosition; labelKey: string }> = [
     { id: 'left', labelKey: 'settings.openchamber.desktopNetwork.option.windowControlsLeft' },
@@ -302,6 +303,12 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const setSessionGoalDefaultBudgetEnabled = useUIStore(state => state.setSessionGoalDefaultBudgetEnabled);
     const sessionGoalDefaultBudget = useUIStore(state => state.sessionGoalDefaultBudget);
     const setSessionGoalDefaultBudget = useUIStore(state => state.setSessionGoalDefaultBudget);
+    const sessionAutoContinueEnabled = useUIStore(state => state.sessionAutoContinueEnabled);
+    const setSessionAutoContinueEnabled = useUIStore(state => state.setSessionAutoContinueEnabled);
+    const sessionAutoContinueMaxRetries = useUIStore(state => state.sessionAutoContinueMaxRetries);
+    const setSessionAutoContinueMaxRetries = useUIStore(state => state.setSessionAutoContinueMaxRetries);
+    const sessionAutoContinuePrompt = useUIStore(state => state.sessionAutoContinuePrompt);
+    const setSessionAutoContinuePrompt = useUIStore(state => state.setSessionAutoContinuePrompt);
     const setShowReasoningTraces = useUIStore(state => state.setShowReasoningTraces);
     const streamingAutoFollowEnabled = useUIStore(state => state.streamingAutoFollowEnabled);
     const setStreamingAutoFollowEnabled = useUIStore(state => state.setStreamingAutoFollowEnabled);
@@ -622,6 +629,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
     const hasNavigationSettings = (shouldShow('terminalQuickKeys') && !isMobile) || ((shouldShow('terminalShell') || shouldShow('terminalLoginShell')) && !isVSCode) || shouldShow('fileEditorKeymap') || shouldShow('autoSaveEnabled') || (shouldShow('sessionTabs') && !isVSCode && !isMobile);
     const hasBehaviorSettings = shouldShow('mermaidRendering')
         || (shouldShow('sessionGoal') && !isVSCode)
+        || (shouldShow('sessionAutoContinue') && !isVSCode)
         || shouldShow('userMessageRendering')
         || shouldShow('chatRenderMode')
         || shouldShow('messageTransport')
@@ -651,6 +659,7 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
         || shouldShow('followUpBehavior');
     const showBehaviorFeatureCheckboxes = shouldShow('sessionAssist')
         || (shouldShow('sessionGoal') && !isVSCode)
+        || (shouldShow('sessionAutoContinue') && !isVSCode)
         || shouldShow('subagentReadOnlyBanner')
         || shouldShow('collapsibleUserMessages')
         || shouldShow('stickyUserHeader')
@@ -1820,6 +1829,55 @@ export const OpenChamberVisualSettings: React.FC<OpenChamberVisualSettingsProps>
                                                 />
                                             ) : null}
                                         </div>
+                                    </SettingsSection>
+                                )}
+                                {shouldShow('sessionAutoContinue') && !isVSCode && (
+                                    <SettingsSection
+                                        title={t('settings.openchamber.visual.autoContinue.sectionTitle')}
+                                        info={t('settings.openchamber.visual.autoContinue.description')}
+                                        contentClassName={SETTINGS_OPTION_STACK_CLASS}
+                                    >
+                                        <SettingsCheckboxRow
+                                            checked={sessionAutoContinueEnabled}
+                                            onChange={setSessionAutoContinueEnabled}
+                                            label={t('settings.openchamber.visual.autoContinue.enabled')}
+                                            ariaLabel={t('settings.openchamber.visual.autoContinue.enabledAria')}
+                                            settingsItem="chat.session-auto-continue"
+                                        />
+                                        <SettingsFieldRow
+                                            label={t('settings.openchamber.visual.autoContinue.maxRetries')}
+                                            info={t('settings.openchamber.visual.autoContinue.maxRetriesInfo')}
+                                            settingsItem="chat.session-auto-continue-max-retries"
+                                        >
+                                            <NumberInput
+                                                value={sessionAutoContinueMaxRetries}
+                                                onValueChange={(value) => {
+                                                    if (Number.isFinite(value)) {
+                                                        setSessionAutoContinueMaxRetries(Math.max(0, Math.floor(value)));
+                                                    }
+                                                }}
+                                                min={0}
+                                                step={1}
+                                                aria-label={t('settings.openchamber.visual.autoContinue.maxRetriesAria')}
+                                                disabled={!sessionAutoContinueEnabled}
+                                            />
+                                        </SettingsFieldRow>
+                                        <SettingsStackedField
+                                            label={t('settings.openchamber.visual.autoContinue.prompt')}
+                                            info={t('settings.openchamber.visual.autoContinue.promptInfo')}
+                                            settingsItem="chat.session-auto-continue-prompt"
+                                            controlClassName="w-full max-w-none"
+                                        >
+                                            <Textarea
+                                                value={sessionAutoContinuePrompt}
+                                                onChange={(event) => setSessionAutoContinuePrompt(event.target.value)}
+                                                placeholder={t('settings.openchamber.visual.autoContinue.promptPlaceholder')}
+                                                aria-label={t('settings.openchamber.visual.autoContinue.promptAria')}
+                                                maxLength={2000}
+                                                rows={4}
+                                                disabled={!sessionAutoContinueEnabled}
+                                            />
+                                        </SettingsStackedField>
                                     </SettingsSection>
                                 )}
                                 {shouldShow('reasoning') && (

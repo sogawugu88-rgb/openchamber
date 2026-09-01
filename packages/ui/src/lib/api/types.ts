@@ -700,6 +700,9 @@ export interface SettingsPayload {
   showTurnChangedFiles?: boolean;
   showExpandedBashTools?: boolean;
   showExpandedEditTools?: boolean;
+  sessionAutoContinueEnabled?: boolean;
+  sessionAutoContinueMaxRetries?: number;
+  sessionAutoContinuePrompt?: string;
   chatRenderMode?: 'sorted' | 'live';
   messageStreamTransport?: 'auto' | 'ws' | 'sse';
   activityRenderMode?: 'collapsed' | 'summary';
