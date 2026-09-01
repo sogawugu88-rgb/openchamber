@@ -116,6 +116,7 @@ import { createSystemPromptRuntime } from './lib/system-prompt/runtime.js';
 import { createOpenChamberSessionService } from './lib/openchamber-sessions/routes.js';
 import { createScheduledTaskService } from './lib/scheduled-tasks/service.js';
 import { createOpenChamberControlService } from './lib/openchamber-control/service.js';
+import { createTokenUsageService } from './lib/opencode/token-usage.js';
 import { OpenChamberControlError } from './lib/openchamber-control/error.js';
 import webPush from 'web-push';
 
@@ -1471,6 +1472,23 @@ const fetchAgentsSnapshot = (...args) => serverUtilsRuntime.fetchAgentsSnapshot(
 const fetchProvidersSnapshot = (...args) => serverUtilsRuntime.fetchProvidersSnapshot(...args);
 const fetchModelsSnapshot = (...args) => serverUtilsRuntime.fetchModelsSnapshot(...args);
 const setupProxy = (...args) => serverUtilsRuntime.setupProxy(...args);
+const tokenUsageService = createTokenUsageService({
+  openCodeFetch: async (fetchPath) => {
+    const response = await fetch(buildOpenCodeUrl(fetchPath, ''), {
+      headers: {
+        Accept: 'application/json',
+        ...getOpenCodeAuthHeaders(),
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`OpenCode GET ${fetchPath} failed with ${response.status}`);
+    return {
+      data: await response.json(),
+      nextCursor: response.headers.get('x-next-cursor') || null,
+    };
+  },
+  getServerTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+});
 const gracefulShutdownRuntime = createGracefulShutdownRuntime({
   process,
   shutdownTimeoutMs: SHUTDOWN_TIMEOUT,
@@ -1974,6 +1992,7 @@ async function main(options = {}) {
     getOpenChamberEventClients: () => uiOpenChamberEventClients,
     writeSseEvent,
     permissionAutoAcceptRuntime,
+    tokenUsageService,
   });
 
   const startupPipelineResult = await startupPipelineRuntime.run({

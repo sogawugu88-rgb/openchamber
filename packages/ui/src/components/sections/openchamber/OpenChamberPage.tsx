@@ -179,7 +179,9 @@ const VisualSectionContent: React.FC = () => {
         'terminalFontSize',
         'editorFontSize',
         'spacing',
-        'inputBarOffset',
+         'inputBarOffset',
+         'showSessionTokenDetails',
+         'codeServer',
     ]} />;
 };
 

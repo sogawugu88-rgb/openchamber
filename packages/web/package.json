@@ -1,6 +1,6 @@
 {
-  "name": "@openchamber/web",
-  "version": "1.21.0",
+  "name": "openchamber-sogawugu",
+  "version": "1.21.3",
   "private": false,
   "type": "module",
   "main": "./server/index.js",
@@ -103,6 +103,9 @@
   "files": [
     "dist",
     "server",
+    "!server/**/*.test.js",
+    "!server/**/*.test.mjs",
+    "!server/**/DOCUMENTATION.md",
     "bin",
     "public",
     "package.json",

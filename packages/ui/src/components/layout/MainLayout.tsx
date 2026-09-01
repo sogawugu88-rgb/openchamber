@@ -5,6 +5,7 @@ import { SidebarTopBar } from './SidebarTopBar';
 import { TitlebarLeftControls } from './TitlebarLeftControls';
 import { ContextPanel } from './ContextPanel';
 import { ContextPanelRail } from './ContextPanelRail';
+import { TerminalDock } from '@/components/terminal/TerminalDock';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { CommandPalette } from '../ui/CommandPalette';
 import { HelpDialog } from '../ui/HelpDialog';
@@ -18,10 +19,12 @@ import { WorktreesView } from '@/components/views/WorktreesView';
 import { DiffWorkerProvider } from '@/contexts/DiffWorkerProvider';
 import { MultiRunLauncher } from '@/components/multirun';
 
-import { useUIStore } from '@/stores/useUIStore';
+import { normalizeContextPanelDirectoryKey, useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useUpdatePolling } from '@/hooks/useUpdatePolling';
 import { useDeviceInfo } from '@/lib/device';
+import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import { isDesktopTerminalDockOpen } from '@/components/terminal/terminalDockState';
 import { cn } from '@/lib/utils';
 import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
 import { useSessionListSync } from '@/components/session/sidebar/list/useSessionListSync';
@@ -32,9 +35,10 @@ const SettingsWindow = lazyWithChunkRecovery(() => import('@/components/views/Se
 
 /**
  * Desktop-surface layout: the chat owns the main area, and every other
- * surface (git, diff, files, terminal, ...) opens in the ContextPanel via the
- * rail. Phone-sized viewports run the separate MobileApp shell — a viewport
- * crossing the threshold reloads into it (see watchHostedSurfaceViewport).
+ * surface (git, diff, files, ...) opens in the ContextPanel via the rail;
+ * terminal opens in the bottom dock. Phone-sized viewports run the separate
+ * MobileApp shell — a viewport crossing the threshold reloads into it (see
+ * watchHostedSurfaceViewport).
  */
 export const MainLayout: React.FC = () => {
     useSessionListSync({ isVSCode: false });
@@ -79,6 +83,25 @@ export const MainLayout: React.FC = () => {
         };
     }, []);
     const { isMobile } = useDeviceInfo();
+    const effectiveDirectory = useEffectiveDirectory() ?? '';
+    const directoryKey = React.useMemo(
+        () => normalizeContextPanelDirectoryKey(effectiveDirectory),
+        [effectiveDirectory],
+    );
+    const terminalDockOpen = useUIStore((state) => {
+        const panel = state.contextPanelByDirectory[directoryKey];
+        const activeTab = panel?.tabs.find((tab) => tab.id === panel.activeTabId);
+        return isDesktopTerminalDockOpen(Boolean(panel?.isOpen), activeTab?.mode ?? null);
+    });
+    const terminalDockExpanded = useUIStore((state) => {
+        const panel = state.contextPanelByDirectory[directoryKey];
+        const activeTab = panel?.tabs.find((tab) => tab.id === panel.activeTabId);
+        return Boolean(panel?.isOpen && panel?.expanded && activeTab?.mode === 'terminal');
+    });
+    const terminalDockHeight = useUIStore((state) => state.terminalDockHeight);
+    const setTerminalDockHeight = useUIStore((state) => state.setTerminalDockHeight);
+    const closeContextPanel = useUIStore((state) => state.closeContextPanel);
+    const toggleContextPanelExpanded = useUIStore((state) => state.toggleContextPanelExpanded);
 
     useUpdatePolling();
 
@@ -122,31 +145,52 @@ export const MainLayout: React.FC = () => {
                                         width does not move when the context panel opens. The
                                         work-status panel measures this rather than the chat,
                                         which the context panel animates. */}
-                                    <div className="relative flex flex-1 min-h-0 min-w-0 overflow-hidden" data-page-scroll-lock="true" data-chat-area="true">
-                                        <main className="flex-1 overflow-hidden bg-background relative" data-page-scroll-lock="true">
-                                            <div className={cn('absolute inset-0', isSurfacePageOpen && 'invisible')}>
-                                                <ErrorBoundary><ChatView active={!isSettingsDialogOpen && !isSurfacePageOpen} /></ErrorBoundary>
-                                            </div>
-                                            {isMultiRunLauncherOpen && (
-                                                <div className="absolute inset-0 z-10 bg-background">
-                                                    <ErrorBoundary>
-                                                        {/* isWindowed: the app Header already shows the surface
-                                                            title, so skip the launcher's own title bar. */}
-                                                        <MultiRunLauncher
-                                                            isWindowed
-                                                            initialPrompt={multiRunLauncherPrefillPrompt}
-                                                            onCreated={() => setMultiRunLauncherOpen(false)}
-                                                            onCancel={() => setMultiRunLauncherOpen(false)}
-                                                        />
-                                                    </ErrorBoundary>
+                                    <div
+                                        className={cn(
+                                            'relative flex flex-1 min-h-0 min-w-0 overflow-hidden',
+                                            terminalDockOpen && 'flex-col',
+                                        )}
+                                        data-page-scroll-lock="true"
+                                        data-chat-area="true"
+                                    >
+                                        <div className={cn(
+                                            'relative flex flex-1 min-h-0 min-w-0 overflow-hidden',
+                                            terminalDockExpanded && 'hidden',
+                                        )}>
+                                            <main className="flex-1 overflow-hidden bg-background relative" data-page-scroll-lock="true">
+                                                <div className={cn('absolute inset-0', isSurfacePageOpen && 'invisible')}>
+                                                    <ErrorBoundary><ChatView active={!isSettingsDialogOpen && !isSurfacePageOpen} /></ErrorBoundary>
                                                 </div>
-                                            )}
-                                            <ErrorBoundary><ScheduledTasksDialog /></ErrorBoundary>
-                                            <ErrorBoundary><TaskboardView /></ErrorBoundary>
-                                            <ErrorBoundary><ArchiveView /></ErrorBoundary>
-                                            <ErrorBoundary><WorktreesView /></ErrorBoundary>
-                                        </main>
-                                        <ContextPanel />
+                                                {isMultiRunLauncherOpen && (
+                                                    <div className="absolute inset-0 z-10 bg-background">
+                                                        <ErrorBoundary>
+                                                            {/* isWindowed: the app Header already shows the surface
+                                                                title, so skip the launcher's own title bar. */}
+                                                            <MultiRunLauncher
+                                                                isWindowed
+                                                                initialPrompt={multiRunLauncherPrefillPrompt}
+                                                                onCreated={() => setMultiRunLauncherOpen(false)}
+                                                                onCancel={() => setMultiRunLauncherOpen(false)}
+                                                            />
+                                                        </ErrorBoundary>
+                                                    </div>
+                                                )}
+                                                <ErrorBoundary><ScheduledTasksDialog /></ErrorBoundary>
+                                                <ErrorBoundary><TaskboardView /></ErrorBoundary>
+                                                <ErrorBoundary><ArchiveView /></ErrorBoundary>
+                                                <ErrorBoundary><WorktreesView /></ErrorBoundary>
+                                            </main>
+                                            <ContextPanel terminalDocked={terminalDockOpen} />
+                                        </div>
+                                        {terminalDockOpen ? (
+                                            <TerminalDock
+                                                height={terminalDockHeight}
+                                                expanded={terminalDockExpanded}
+                                                onHeightChange={setTerminalDockHeight}
+                                                onClose={() => closeContextPanel(directoryKey)}
+                                                onToggleExpanded={() => toggleContextPanelExpanded(directoryKey)}
+                                            />
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>

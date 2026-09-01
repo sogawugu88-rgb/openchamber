@@ -1,4 +1,4 @@
-import type { RuntimeAPIs, TerminalAPI } from '@openchamber/ui/lib/api/types';
+import type { RuntimeAPIs, TerminalAPI, TokenUsageAPI } from '@openchamber/ui/lib/api/types';
 import { createVSCodeFilesAPI } from './files';
 import { createVSCodeSettingsAPI } from './settings';
 import { createVSCodePermissionsAPI } from './permissions';
@@ -25,6 +25,12 @@ const createStubTerminalAPI = (): TerminalAPI => ({
   close: terminalUnsupported,
 });
 
+const createUnsupportedTokenUsageAPI = (): TokenUsageAPI => ({
+  getReport: async () => {
+    throw new Error('Token usage is not supported in the VS Code runtime');
+  },
+});
+
 export const createVSCodeAPIs = (): RuntimeAPIs => ({
   runtime: { platform: 'vscode', isDesktop: false, isVSCode: true, label: 'VS Code Extension' },
   terminal: createStubTerminalAPI(),
@@ -37,4 +43,5 @@ export const createVSCodeAPIs = (): RuntimeAPIs => ({
   tools: createVSCodeToolsAPI(),
   editor: createVSCodeEditorAPI(),
   vscode: createVSCodeActionsAPI(),
+  tokenUsage: createUnsupportedTokenUsageAPI(),
 });

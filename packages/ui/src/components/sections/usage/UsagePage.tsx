@@ -17,6 +17,12 @@ import { useI18n } from '@/lib/i18n';
 import { formatTimeForPreference } from '@/lib/timeFormat';
 import { useUIStore, type TimeFormatPreference } from '@/stores/useUIStore';
 import { SettingsPageLayout } from '@/components/sections/shared/SettingsPageLayout';
+import { TokenUsageCalendar } from './TokenUsageCalendar';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { getRuntimeKey } from '@/lib/runtime-switch';
+import { useAllSessionStatuses } from '@/sync/sync-context';
+import { hasSettledUsageTransition } from './tokenUsage';
+import { useTokenUsageCalendar } from './useTokenUsageCalendar';
 import {
   SettingsSection,
   SettingsCheckboxRow,
@@ -38,6 +44,35 @@ interface ModelInfo {
 
 export const UsagePage: React.FC = () => {
   const { t } = useI18n();
+  const { tokenUsage } = useRuntimeAPIs();
+  const sessionStatuses = useAllSessionStatuses();
+  const runtimeKey = getRuntimeKey();
+  const {
+    error: tokenError,
+    loading: tokenLoading,
+    month: tokenMonth,
+    onMonthChange,
+    report: visibleTokenReport,
+    retry: loadTokenUsage,
+  } = useTokenUsageCalendar({ runtimeKey, tokenUsage });
+  const refreshScheduledRef = React.useRef(false);
+  const previousStatusesRef = React.useRef<Record<string, { type: string }>>({});
+
+  React.useEffect(() => {
+    const previous = previousStatusesRef.current;
+    const settled = Object.entries(sessionStatuses).some(([sessionId, status]) => {
+      const previousType = previous[sessionId]?.type;
+      return hasSettledUsageTransition(previousType, status.type);
+    });
+    previousStatusesRef.current = sessionStatuses;
+    if (!settled || refreshScheduledRef.current) return;
+    refreshScheduledRef.current = true;
+    queueMicrotask(() => {
+      refreshScheduledRef.current = false;
+      loadTokenUsage();
+    });
+  }, [loadTokenUsage, sessionStatuses]);
+
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const results = useQuotaStore((state) => state.results);
   const selectedProviderId = useQuotaStore((state) => state.selectedProviderId);
@@ -112,12 +147,14 @@ export const UsagePage: React.FC = () => {
     return groupModelsByFamilyWithGetter(
       providerModels,
       (model) => model.name,
+      // SAFETY: selectedProviderId is checked above and quota provider IDs are the store's string union.
       selectedProviderId as QuotaProviderId
     );
   }, [providerModels, selectedProviderId]);
 
   const sortedFamilies = React.useMemo(() => {
     if (!selectedProviderId) return [];
+    // SAFETY: the null case is returned above; configured provider IDs match QuotaProviderId.
     const families = getAllModelFamilies(selectedProviderId as QuotaProviderId);
     return sortModelFamilies(families);
   }, [selectedProviderId]);
@@ -141,17 +178,28 @@ export const UsagePage: React.FC = () => {
     const nextSelected = isSelected
       ? currentSelected.filter((m) => m !== modelName)
       : [...currentSelected, modelName];
-    const nextSettings: Record<string, string[]> = { ...selectedModels, [selectedProviderId]: nextSelected };
+    const nextSettings = { ...selectedModels, [selectedProviderId]: nextSelected } satisfies Record<string, string[]>;
     void updateDesktopSettings({ usageSelectedModels: nextSettings });
   }, [selectedProviderId, selectedModels, toggleModelSelected]);
 
   const providerSelectedModels = selectedProviderId ? (selectedModels[selectedProviderId] ?? []) : [];
 
+  const tokenUsageCalendar = (
+    <TokenUsageCalendar
+      month={tokenMonth}
+      report={visibleTokenReport}
+      loading={tokenLoading}
+      error={tokenError}
+      onRetry={loadTokenUsage}
+      onMonthChange={onMonthChange}
+    />
+  );
+
   if (!selectedProviderId) {
     return (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-        <p className="typography-body">{t('settings.usage.page.empty.selectProvider')}</p>
-      </div>
+      <SettingsPageLayout title={t('settings.usage.sidebar.title')}>
+        {tokenUsageCalendar}
+      </SettingsPageLayout>
     );
   }
 
@@ -182,6 +230,8 @@ export const UsagePage: React.FC = () => {
           info={t('settings.usage.page.options.showInWorkStatusTooltip')}
         />
       </SettingsSection>
+
+      {tokenUsageCalendar}
 
       {!selectedResult && (
         <p className="typography-ui-label text-foreground pb-8">{t('settings.usage.page.state.noData')}</p>

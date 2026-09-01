@@ -12,6 +12,7 @@ import { TerminalViewport, type TerminalController } from '@/components/terminal
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui';
 import { SortableTabsStrip } from '@/components/ui/sortable-tabs-strip';
 import { Icon } from "@/components/icon/Icon";
 import { useDeviceInfo } from '@/lib/device';
@@ -22,16 +23,24 @@ import { PROJECT_ACTION_ICON_MAP, type ProjectActionIconKey } from '@/lib/projec
 import { useInlineCommentDraftStore } from '@/stores/useInlineCommentDraftStore';
 import { applyTerminalModifier, terminalControlCharacter, terminalSequenceForKey, type TerminalModifier as Modifier, type TerminalQuickKey as MobileKey } from '@/lib/terminalInput';
 import { formatShortcutForDisplay } from '@/lib/shortcuts';
+import { isFilesystemError } from '@/lib/api/files-errors';
+import { notifyFileContentInvalidated } from '@/lib/fileContentInvalidation';
+import { getRuntimeKey } from '@/lib/runtime-switch';
+import { getTerminalUploadName, joinTerminalUploadPath, summarizeTerminalUploads, type TerminalUploadOutcome } from '@/lib/terminalUpload';
+import { ServerDirectoryPickerDialog } from '@/components/terminal/ServerDirectoryPickerDialog';
 
 type TerminalViewProps = {
     visible?: boolean;
+    onClose?: () => void;
+    onToggleExpanded?: () => void;
+    isExpanded?: boolean;
 };
 
 const FALLBACK_TERMINAL_SIZE = { cols: 80, rows: 24 } as const;
 
-export const TerminalView: React.FC<TerminalViewProps> = ({ visible }) => {
+export const TerminalView: React.FC<TerminalViewProps> = ({ visible, onClose, onToggleExpanded, isExpanded = false }) => {
     const { t } = useI18n();
-    const { terminal, runtime } = useRuntimeAPIs();
+    const { terminal, files: fileAPI, runtime } = useRuntimeAPIs();
     const { currentTheme } = useThemeSystem();
     const terminalAppearanceRef = React.useRef<{ themeMode: 'light' | 'dark'; terminalBackground: string; terminalForeground: string }>({ themeMode: 'dark', terminalBackground: '', terminalForeground: '' });
     terminalAppearanceRef.current = { themeMode: currentTheme.metadata.variant === 'light' ? 'light' : 'dark', terminalBackground: currentTheme.colors.surface.background, terminalForeground: currentTheme.colors.syntax.base.foreground };
@@ -125,6 +134,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ visible }) => {
     const previewScanTailRef = React.useRef('');
     const pendingPreviewProbeUrlsRef = React.useRef<Set<string>>(new Set());
     const previewProbeGenerationRef = React.useRef(0);
+    const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+    const uploadDirectoryRef = React.useRef<string | null>(null);
+    const [uploadDirectoryPickerOpen, setUploadDirectoryPickerOpen] = React.useState(false);
+    const [isUploadingFile, setIsUploadingFile] = React.useState(false);
 
     const resetTerminalPreviewScan = React.useCallback(() => {
         previewScanTailRef.current = '';
@@ -692,6 +705,68 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ visible }) => {
         });
     }, [activeTab, addContextDraft, currentSessionId, effectiveDirectory, newSessionDraft?.open]);
 
+    const openUploadDirectoryPicker = React.useCallback(() => {
+        if (fileAPI.uploadFile && effectiveDirectory) {
+            setUploadDirectoryPickerOpen(true);
+        }
+    }, [effectiveDirectory, fileAPI.listDirectory, fileAPI.uploadFile]);
+
+    const handleUploadDirectorySelected = React.useCallback((directory: string) => {
+        uploadDirectoryRef.current = directory;
+        setUploadDirectoryPickerOpen(false);
+        requestAnimationFrame(() => uploadInputRef.current?.click());
+    }, []);
+
+    const handleUploadFiles = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(event.target.files ?? []);
+        event.target.value = '';
+        const uploadFile = fileAPI.uploadFile;
+        const uploadDirectory = uploadDirectoryRef.current;
+        uploadDirectoryRef.current = null;
+        if (!uploadFile || !uploadDirectory || selectedFiles.length === 0) return;
+
+        const operationRuntime = getRuntimeKey();
+        const uploadedPaths: string[] = [];
+        const outcomes: TerminalUploadOutcome[] = [];
+        setIsUploadingFile(true);
+        try {
+            for (const file of selectedFiles) {
+                const name = getTerminalUploadName(file);
+                if (!name || getRuntimeKey() !== operationRuntime) {
+                    outcomes.push('failed');
+                    continue;
+                }
+
+                try {
+                    const result = await uploadFile(joinTerminalUploadPath(uploadDirectory, name), file, {
+                        directory: uploadDirectory,
+                        overwrite: false,
+                        scope: 'server',
+                    });
+                    if (result.success) {
+                        uploadedPaths.push(result.path);
+                        outcomes.push('uploaded');
+                    } else {
+                        outcomes.push('failed');
+                    }
+                } catch (error) {
+                    outcomes.push(isFilesystemError(error) && error.reason === 'already-exists' ? 'conflict' : 'failed');
+                }
+            }
+
+            if (uploadedPaths.length > 0) {
+                notifyFileContentInvalidated({ runtimeKey: operationRuntime, paths: uploadedPaths });
+            }
+
+            const summary = summarizeTerminalUploads(outcomes);
+            if (summary.uploaded > 0) toast.success(t('terminalView.upload.success', { count: summary.uploaded }));
+            if (summary.conflicts > 0) toast.warning(t('terminalView.upload.conflict', { count: summary.conflicts }));
+            if (summary.failed > 0) toast.error(t('terminalView.upload.failed', { count: summary.failed }));
+        } finally {
+            setIsUploadingFile(false);
+        }
+    }, [fileAPI.uploadFile, t]);
+
     const handleSelectTab = React.useCallback(
         (tabId: string) => {
             if (!effectiveDirectory) return;
@@ -1107,6 +1182,46 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ visible }) => {
                                     <span className="whitespace-nowrap">{t('terminalView.preview.open')}</span>
                                 </Button>
                             ) : null}
+                            {fileAPI.uploadFile && effectiveDirectory ? (
+                                <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    onClick={openUploadDirectoryPicker}
+                                    disabled={isUploadingFile}
+                                    title={t('terminalView.actions.uploadFiles')}
+                                    aria-label={t('terminalView.actions.uploadFiles')}
+                                >
+                                    <Icon name="file-add" className="h-4 w-4" />
+                                </Button>
+                            ) : null}
+                            {onToggleExpanded ? (
+                                <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    onClick={onToggleExpanded}
+                                    title={isExpanded ? t('contextPanel.actions.collapsePanel') : t('contextPanel.actions.expandPanel')}
+                                    aria-label={isExpanded ? t('contextPanel.actions.collapsePanel') : t('contextPanel.actions.expandPanel')}
+                                >
+                                    <Icon name={isExpanded ? 'fullscreen-exit' : 'fullscreen'} className="h-4 w-4" />
+                                </Button>
+                            ) : null}
+                            {onClose ? (
+                                <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    onClick={onClose}
+                                    title={t('contextPanel.actions.closePanel')}
+                                    aria-label={t('contextPanel.actions.closePanel')}
+                                >
+                                    <Icon name="close" className="h-4 w-4" />
+                                </Button>
+                            ) : null}
                         </div>
                     </div>
                 ) : null}
@@ -1173,6 +1288,22 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ visible }) => {
                         {quickKeysControls}
                     </div>
                 </div>
+            ) : null}
+            <input
+                ref={uploadInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleUploadFiles}
+            />
+            {fileAPI.uploadFile && effectiveDirectory ? (
+                <ServerDirectoryPickerDialog
+                    open={uploadDirectoryPickerOpen}
+                    initialDirectory={effectiveDirectory}
+                    listDirectory={fileAPI.listDirectory}
+                    onOpenChange={setUploadDirectoryPickerOpen}
+                    onSelectDirectory={handleUploadDirectorySelected}
+                />
             ) : null}
         </div>
     );

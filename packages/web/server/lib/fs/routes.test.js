@@ -225,6 +225,46 @@ const registerMkdir = (fsPromises) => {
   return getRoute('POST', '/api/fs/mkdir');
 };
 
+const registerDelete = (fsPromises) => {
+  const { app, getRoute } = createRouteRegistry();
+  registerFsRoutes(app, {
+    os: { homedir: () => '/home/user' },
+    path: path.posix,
+    fsPromises: {
+      realpath: async (targetPath) => targetPath,
+      ...fsPromises,
+    },
+    spawn: vi.fn(),
+    crypto: { randomUUID: () => 'job-0' },
+    normalizeDirectoryPath: (p) => p,
+    resolveProjectDirectory: async () => ({ directory: '/repo' }),
+    buildAugmentedPath: () => '/usr/bin',
+    resolveGitBinaryForSpawn: () => 'git',
+    openchamberUserConfigRoot: '/home/user/.config',
+  });
+  return getRoute('POST', '/api/fs/delete');
+};
+
+const registerRename = (fsPromises) => {
+  const { app, getRoute } = createRouteRegistry();
+  registerFsRoutes(app, {
+    os: { homedir: () => '/home/user' },
+    path: path.posix,
+    fsPromises: {
+      realpath: async (targetPath) => targetPath,
+      ...fsPromises,
+    },
+    spawn: vi.fn(),
+    crypto: { randomUUID: () => 'job-0' },
+    normalizeDirectoryPath: (p) => p,
+    resolveProjectDirectory: async () => ({ directory: '/repo' }),
+    buildAugmentedPath: () => '/usr/bin',
+    resolveGitBinaryForSpawn: () => 'git',
+    openchamberUserConfigRoot: '/home/user/.config',
+  });
+  return getRoute('POST', '/api/fs/rename');
+};
+
 const registerReveal = ({ fsPromises, spawn, platform = 'linux' }) => {
   const { app, getRoute } = createRouteRegistry();
   registerFsRoutes(app, {
@@ -264,6 +304,7 @@ const callUpload = async (handler, {
   includeContentLength = true,
   path: filePath = '/repo/file.bin',
   overwrite = false,
+  scope,
 } = {}) => {
   const res = createMockResponse();
   const uploadChunks = chunks ?? [body];
@@ -271,7 +312,7 @@ const callUpload = async (handler, {
   if (includeContentLength) headers['content-length'] = String(body.length);
   const req = {
     headers,
-    query: { path: filePath, overwrite: overwrite ? 'true' : undefined },
+    query: { path: filePath, overwrite: overwrite ? 'true' : undefined, scope },
     async *[Symbol.asyncIterator]() {
       yield* uploadChunks;
     },
@@ -293,6 +334,18 @@ const callRaw = async (handler, query) => {
 };
 
 const callMkdir = async (handler, body) => {
+  const res = createMockResponse();
+  await handler({ body }, res);
+  return res;
+};
+
+const callDelete = async (handler, body) => {
+  const res = createMockResponse();
+  await handler({ body }, res);
+  return res;
+};
+
+const callRename = async (handler, body) => {
   const res = createMockResponse();
   await handler({ body }, res);
   return res;
@@ -385,9 +438,121 @@ describe('fs write', () => {
     expect(fsPromises.writeFile).not.toHaveBeenCalled();
     expect(fsPromises.rename).not.toHaveBeenCalled();
   });
+
+  it('writes an outside path with explicit server scope', async () => {
+    const fsPromises = {
+      readFile: vi.fn(async () => 'old'),
+      mkdir: vi.fn(async () => undefined),
+      writeFile: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      unlink: vi.fn(async () => undefined),
+    };
+    const handler = registerWrite(fsPromises);
+
+    const res = await callWrite(handler, { path: '/outside/file.txt', content: 'new', scope: 'server' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/outside/file.txt' });
+    expect(fsPromises.mkdir).toHaveBeenCalledWith('/outside', { recursive: true });
+  });
+});
+
+describe('fs mutations outside workspace', () => {
+  it('creates an outside directory with explicit server scope', async () => {
+    const fsPromises = {
+      mkdir: vi.fn(async () => undefined),
+    };
+    const handler = registerMkdir(fsPromises);
+
+    const res = await callMkdir(handler, { path: '/outside/new-dir', scope: 'server' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/outside/new-dir' });
+    expect(fsPromises.mkdir).toHaveBeenCalledWith('/outside/new-dir', { recursive: true });
+  });
+
+  it('deletes an outside path with explicit server scope', async () => {
+    const fsPromises = {
+      rm: vi.fn(async () => undefined),
+    };
+    const handler = registerDelete(fsPromises);
+
+    const res = await callDelete(handler, { path: '/outside/old.txt', scope: 'server' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/outside/old.txt' });
+    expect(fsPromises.rm).toHaveBeenCalledWith('/outside/old.txt', { recursive: true, force: true });
+  });
+
+  it('renames an outside path with explicit server scope', async () => {
+    const fsPromises = {
+      rename: vi.fn(async () => undefined),
+    };
+    const handler = registerRename(fsPromises);
+
+    const res = await callRename(handler, {
+      oldPath: '/outside/old.txt',
+      newPath: '/other/new.txt',
+      scope: 'server',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/other/new.txt' });
+    expect(fsPromises.rename).toHaveBeenCalledWith('/outside/old.txt', '/other/new.txt');
+  });
+
+  it('keeps mutation paths workspace-bound without explicit server scope', async () => {
+    const fsPromises = {
+      rm: vi.fn(),
+    };
+    const handler = registerDelete(fsPromises);
+
+    const res = await callDelete(handler, { path: '/outside/old.txt' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'Path is outside of active workspace' });
+    expect(fsPromises.rm).not.toHaveBeenCalled();
+  });
 });
 
 describe('fs upload', () => {
+  it('uploads to an arbitrary absolute server path when server scope is explicit', async () => {
+    const write = vi.fn(async (_buffer, _offset, length) => ({ bytesWritten: length }));
+    const fsPromises = {
+      realpath: vi.fn(async (targetPath) => {
+        if (targetPath === '/srv/app') return '/srv/app';
+        throw Object.assign(new Error('not found'), { code: 'ENOENT' });
+      }),
+      stat: vi.fn(async () => ({ isDirectory: () => false })),
+      open: vi.fn(async () => ({ write, close: vi.fn(async () => undefined) })),
+      link: vi.fn(async () => undefined),
+      unlink: vi.fn(async () => undefined),
+    };
+    const handler = registerUpload(fsPromises);
+
+    const res = await callUpload(handler, {
+      path: '/srv/app/file.bin',
+      scope: 'server',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ success: true, path: '/srv/app/file.bin' });
+    expect(fsPromises.open).toHaveBeenCalled();
+  });
+
+  it('keeps workspace scope as the default for uploads', async () => {
+    const fsPromises = {
+      open: vi.fn(),
+    };
+    const handler = registerUpload(fsPromises);
+
+    const res = await callUpload(handler, { path: '/srv/app/file.bin' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/outside of active workspace/i);
+    expect(fsPromises.open).not.toHaveBeenCalled();
+  });
+
   it('streams a binary file to temp storage before committing it without overwrite', async () => {
     const write = vi.fn(async (_buffer, _offset, length) => ({ bytesWritten: length }));
     const close = vi.fn(async () => undefined);
@@ -567,20 +732,48 @@ describe('fs read', () => {
     expect(fsPromises.readFile).toHaveBeenCalledWith('/shared/target.txt', 'utf8');
   });
 
-  it('rejects outside workspace reads without a grant', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('keeps outside reads workspace-bound without an outside access request', async () => {
     const fsPromises = {
       stat: vi.fn(async () => ({ isFile: () => true, size: 3 })),
       readFile: vi.fn(async () => 'secret'),
     };
     const handler = registerRead(fsPromises);
 
-    const res = await callRead(handler, { path: '/etc/passwd', allowOutsideWorkspace: 'true' });
+    const res = await callRead(handler, { path: '/etc/passwd' });
 
     expect(res.statusCode).toBe(400);
-    expect(res.body).toEqual({ error: 'Outside workspace file access requires a grant' });
+    expect(res.body).toEqual({ error: 'Path is outside of active workspace' });
     expect(fsPromises.readFile).not.toHaveBeenCalled();
-    warn.mockRestore();
+  });
+
+  it('allows outside workspace reads without a file grant when explicitly requested', async () => {
+    const fsPromises = {
+      realpath: vi.fn(async (targetPath) => targetPath),
+      stat: vi.fn(async () => ({ isFile: () => true, size: 6 })),
+      readFile: vi.fn(async () => 'secret'),
+    };
+    const handler = registerRead(fsPromises);
+
+    const res = await callRead(handler, { path: '/outside/plan.txt', allowOutsideWorkspace: 'true' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe('secret');
+    expect(fsPromises.readFile).toHaveBeenCalledWith('/outside/plan.txt', 'utf8');
+  });
+
+  it('allows outside workspace raw reads without a file grant when explicitly requested', async () => {
+    const fsPromises = {
+      realpath: vi.fn(async (targetPath) => targetPath),
+      stat: vi.fn(async () => ({ isFile: () => true, size: 6 })),
+      readFile: vi.fn(async () => Buffer.from('secret')),
+    };
+    const handler = registerRaw(fsPromises);
+
+    const res = await callRaw(handler, { path: '/outside/image.png', allowOutsideWorkspace: 'true' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual(Buffer.from('secret'));
+    expect(res.getHeader('referrer-policy')).toBeUndefined();
   });
 
   it('allows outside workspace reads with an exact-path grant', async () => {
@@ -654,16 +847,16 @@ describe('fs read', () => {
     expect(res.getHeader('referrer-policy')).toBe('no-referrer');
   });
 
-  it('rejects outside workspace mkdir without a trusted directory grant', async () => {
+  it('keeps outside workspace mkdir bound without explicit server scope', async () => {
     const fsPromises = {
       mkdir: vi.fn(async () => undefined),
     };
     const handler = registerMkdir(fsPromises);
 
-    const res = await callMkdir(handler, { path: '/tmp/staging', allowOutsideWorkspace: true });
+    const res = await callMkdir(handler, { path: '/tmp/staging' });
 
-    expect(res.statusCode).toBe(403);
-    expect(res.body).toEqual({ error: 'Outside workspace directory creation requires a grant' });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'Path is outside of active workspace' });
     expect(fsPromises.mkdir).not.toHaveBeenCalled();
   });
 
@@ -1032,6 +1225,35 @@ describe('fs list symlink path space (issue 2627)', () => {
       },
     ]);
     expect(fsPromises.readdir).toHaveBeenCalledWith('/real/pkg', { withFileTypes: true });
+  });
+
+  it('accepts explicit server scope for arbitrary absolute directory listing', async () => {
+    const handler = registerList({
+      stat: vi.fn(async () => ({ isDirectory: () => true })),
+      readdir: vi.fn(async () => [{
+        name: 'app',
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+        isFile: () => false,
+      }]),
+    });
+
+    const res = await callList(handler, { path: '/srv', scope: 'server' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.path).toBe('/srv');
+    expect(res.body.entries[0].path).toBe('/srv/app');
+  });
+
+  it('rejects an invalid filesystem scope for directory listing', async () => {
+    const readdir = vi.fn();
+    const handler = registerList({ readdir });
+
+    const res = await callList(handler, { path: '/srv', scope: 'invalid' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid filesystem scope' });
+    expect(readdir).not.toHaveBeenCalled();
   });
 
   for (const code of ['EACCES', 'EPERM']) {

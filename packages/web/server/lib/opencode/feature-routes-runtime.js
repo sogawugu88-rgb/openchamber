@@ -51,6 +51,7 @@ import { parseSkillRepoSource } from '../skills-catalog/source.js';
 import { scanSkillsRepository } from '../skills-catalog/scan.js';
 import { installSkillsFromRepository } from '../skills-catalog/install.js';
 import { fetchGitHubRepoMetas } from '../skills-catalog/github-meta.js';
+import { registerTokenUsageRoutes } from './token-usage-routes.js';
 
 export const createFeatureRoutesRuntime = (dependencies) => {
   const {
@@ -133,7 +134,13 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       writeSseEvent,
       emitSessionCreatedEvent,
       permissionAutoAcceptRuntime,
+      tokenUsageService,
     } = routeDependencies;
+
+    registerTokenUsageRoutes(app, {
+      tokenUsageService,
+      getServerTimezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
 
     registerSettingsUtilityRoutes(app, {
       readCustomThemesFromDisk,

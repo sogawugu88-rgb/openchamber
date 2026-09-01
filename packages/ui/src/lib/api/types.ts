@@ -616,31 +616,38 @@ export interface CommandExecResult {
   error?: string;
 }
 
-interface ListDirectoryOptions {
-  respectGitignore?: boolean;
+export type FileSystemScope = 'workspace' | 'server';
+
+export interface FileSystemOperationOptions {
+  scope?: FileSystemScope;
+  directory?: string;
 }
 
-interface FileReadOptions {
+interface ListDirectoryOptions {
+  respectGitignore?: boolean;
+  scope?: FileSystemScope;
+}
+
+export interface FileReadOptions extends FileSystemOperationOptions {
   allowOutsideWorkspace?: boolean;
   outsideFileGrant?: string;
   optional?: boolean;
-  directory?: string;
 }
 
 export interface FilesAPI {
   listDirectory(path: string, options?: ListDirectoryOptions): Promise<DirectoryListResult>;
   search(payload: FileSearchQuery): Promise<FileSearchResult[]>;
-  createDirectory(path: string): Promise<{ success: boolean; path: string }>;
+  createDirectory(path: string, options?: FileSystemOperationOptions): Promise<{ success: boolean; path: string }>;
   statFile?(path: string, options?: FileReadOptions): Promise<{ path: string; isFile: boolean; size: number; mtimeMs?: number }>;
   readFile?(path: string, options?: FileReadOptions): Promise<{ content: string; path: string }>;
   readFileBinary?(path: string, options?: FileReadOptions): Promise<{ dataUrl: string; path: string }>;
-  writeFile?(path: string, content: string): Promise<{ success: boolean; path: string }>;
-  uploadFile?(path: string, file: Blob, options?: { overwrite?: boolean; directory?: string }): Promise<{ success: boolean; path: string }>;
-  delete?(path: string): Promise<{ success: boolean }>;
-  rename?(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }>;
-  revealPath?(path: string): Promise<{ success: boolean }>;
+  writeFile?(path: string, content: string, options?: FileSystemOperationOptions): Promise<{ success: boolean; path: string }>;
+  uploadFile?(path: string, file: Blob, options?: { overwrite?: boolean; directory?: string; scope?: FileSystemScope }): Promise<{ success: boolean; path: string }>;
+  delete?(path: string, options?: FileSystemOperationOptions): Promise<{ success: boolean }>;
+  rename?(oldPath: string, newPath: string, options?: FileSystemOperationOptions): Promise<{ success: boolean; path: string }>;
+  revealPath?(path: string, options?: FileSystemOperationOptions): Promise<{ success: boolean }>;
   execCommands?(commands: string[], cwd: string): Promise<{ success: boolean; results: CommandExecResult[] }>;
-  downloadFile?(path: string): Promise<void>;
+  downloadFile?(path: string, options?: FileReadOptions): Promise<void>;
 }
 
 export interface ProjectEntry {
@@ -791,6 +798,35 @@ interface DiagnosticsAPI {
 export interface ToolsAPI {
 
   getAvailableTools(): Promise<string[]>;
+}
+
+export interface TokenUsageBucket {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+export interface TokenUsageModelBucket extends TokenUsageBucket {
+  providerID: string;
+  modelID: string;
+}
+
+export interface TokenUsageReport {
+  timezone: string;
+  month: string;
+  today: TokenUsageBucket & { date: string };
+  currentMonth: TokenUsageBucket;
+  total: TokenUsageBucket;
+  days: Record<string, TokenUsageBucket>;
+  modelsByDay: Record<string, TokenUsageModelBucket[]>;
+  fetchedAt: number;
+}
+
+export interface TokenUsageAPI {
+  getReport(month?: string, timezone?: string): Promise<TokenUsageReport>;
 }
 
 export interface EditorAPI {
@@ -1274,6 +1310,7 @@ export interface RuntimeAPIs {
   diagnostics?: DiagnosticsAPI;
   clientAuth?: ClientAuthAPI;
   tools: ToolsAPI;
+  tokenUsage: TokenUsageAPI;
   editor?: EditorAPI;
   vscode?: VSCodeAPI;
   worktrees?: WorktreeMetadata[];

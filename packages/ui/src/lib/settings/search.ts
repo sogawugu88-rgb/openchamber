@@ -178,6 +178,13 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['telemetry', 'analytics'],
   },
   {
+    id: 'appearance.session-token-details',
+    page: 'appearance',
+    titleKey: 'settings.openchamber.visual.field.showSessionTokenDetails',
+    descriptionKey: 'settings.openchamber.visual.field.showSessionTokenDetailsInfo',
+    keywords: ['token', 'usage', 'metrics', 'composer', 'session'],
+  },
+  {
     id: 'general.app-links',
     page: 'general',
     titleKey: 'settings.openchamber.appLinks.title',
@@ -251,6 +258,20 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     descriptionKey: 'settings.openchamber.visual.autoContinue.promptInfo',
     keywords: ['rate limit', 'retry', 'continuation', 'message', 'prompt'],
     isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'chat.session-goal-audit-failure-limit',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.goal.auditFailureLimitLabel',
+    keywords: ['goal', 'audit', 'rate limit', 'blocked', 'retry'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'integration.code-server',
+    page: 'appearance',
+    titleKey: 'settings.openchamber.visual.codeServer.label',
+    descriptionKey: 'settings.openchamber.visual.codeServer.description',
+    keywords: ['code-server', 'vscode', 'remote', 'project', 'folder'],
   },
   {
     id: 'chat.reasoning-traces',

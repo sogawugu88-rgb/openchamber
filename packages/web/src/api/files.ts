@@ -39,6 +39,29 @@ type WebFileUploadResponse = {
   reason?: FilesystemErrorReason;
 };
 
+type WebScopedPathBody = {
+  path: string;
+  scope?: 'server';
+};
+
+type WebScopedWriteBody = WebScopedPathBody & {
+  content: string;
+};
+
+type WebScopedRenameBody = {
+  oldPath: string;
+  newPath: string;
+  scope?: 'server';
+};
+
+type WebFileDownloadQuery = {
+  path: string;
+  download: boolean;
+  scope?: 'server';
+  allowOutsideWorkspace?: 'true';
+  outsideFileGrant?: string;
+};
+
 const toDirectoryListResult = (fallbackDirectory: string, payload: WebDirectoryListResponse): DirectoryListResult => {
   if (!payload || !Array.isArray(payload.entries)) {
     throw new FilesystemError('Directory listing returned an invalid response', {
@@ -75,6 +98,9 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     }
     if (options?.respectGitignore) {
       params.set('respectGitignore', 'true');
+    }
+    if (options?.scope === 'server') {
+      params.set('scope', 'server');
     }
 
     const response = await runtimeFetch('/api/fs/list', {
@@ -135,12 +161,16 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     }));
   },
 
-  async createDirectory(path: string): Promise<{ success: boolean; path: string }> {
+  async createDirectory(path: string, options): Promise<{ success: boolean; path: string }> {
     const target = normalizePath(path);
+    const body: WebScopedPathBody = { path: target };
+    if (options?.scope === 'server') {
+      body.scope = 'server';
+    }
     const response = await runtimeFetch('/api/fs/mkdir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory) },
-      body: JSON.stringify({ path: target }),
+      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory, options?.directory) },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -158,6 +188,9 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
   async statFile(path: string, options): Promise<{ path: string; isFile: boolean; size: number; mtimeMs?: number }> {
     const target = normalizePath(path);
     const params = new URLSearchParams({ path: target });
+    if (options?.scope === 'server') {
+      params.set('scope', 'server');
+    }
     if (options?.allowOutsideWorkspace) {
       params.set('allowOutsideWorkspace', 'true');
     }
@@ -186,6 +219,9 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
   async readFile(path: string, options): Promise<{ content: string; path: string }> {
     const target = normalizePath(path);
     const params = new URLSearchParams({ path: target });
+    if (options?.scope === 'server') {
+      params.set('scope', 'server');
+    }
     if (options?.allowOutsideWorkspace) {
       params.set('allowOutsideWorkspace', 'true');
     }
@@ -210,12 +246,16 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     return { content, path: target };
   },
 
-  async writeFile(path: string, content: string): Promise<{ success: boolean; path: string }> {
+  async writeFile(path: string, content: string, options): Promise<{ success: boolean; path: string }> {
     const target = normalizePath(path);
+    const body: WebScopedWriteBody = { path: target, content };
+    if (options?.scope === 'server') {
+      body.scope = 'server';
+    }
     const response = await runtimeFetch('/api/fs/write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory) },
-      body: JSON.stringify({ path: target, content }),
+      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory, options?.directory) },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -237,6 +277,7 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
       query: {
         path: target,
         overwrite: options?.overwrite ? 'true' : undefined,
+        scope: options?.scope === 'server' ? 'server' : undefined,
       },
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -260,12 +301,16 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     };
   },
 
-  async delete(path: string): Promise<{ success: boolean }> {
+  async delete(path: string, options): Promise<{ success: boolean }> {
     const target = normalizePath(path);
+    const body: WebScopedPathBody = { path: target };
+    if (options?.scope === 'server') {
+      body.scope = 'server';
+    }
     const response = await runtimeFetch('/api/fs/delete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory) },
-      body: JSON.stringify({ path: target }),
+      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory, options?.directory) },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -277,11 +322,15 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     return { success: Boolean((result as { success?: boolean }).success) };
   },
 
-  async rename(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }> {
+  async rename(oldPath: string, newPath: string, options): Promise<{ success: boolean; path: string }> {
+    const body: WebScopedRenameBody = { oldPath, newPath };
+    if (options?.scope === 'server') {
+      body.scope = 'server';
+    }
     const response = await runtimeFetch('/api/fs/rename', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory) },
-      body: JSON.stringify({ oldPath, newPath }),
+      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory, options?.directory) },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -296,11 +345,15 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     };
   },
 
-  async revealPath(targetPath: string): Promise<{ success: boolean }> {
+  async revealPath(targetPath: string, options): Promise<{ success: boolean }> {
+    const body: WebScopedPathBody = { path: normalizePath(targetPath) };
+    if (options?.scope === 'server') {
+      body.scope = 'server';
+    }
     const response = await runtimeFetch('/api/fs/reveal', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory) },
-      body: JSON.stringify({ path: normalizePath(targetPath) }),
+      headers: { 'Content-Type': 'application/json', ...directoryHeaders(getDirectory, options?.directory) },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -312,11 +365,21 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     return { success: Boolean((result as { success?: boolean }).success) };
   },
 
-  async downloadFile(path: string): Promise<void> {
+  async downloadFile(path: string, options): Promise<void> {
     const target = normalizePath(path);
+    const query: WebFileDownloadQuery = { path: target, download: true };
+    if (options?.scope === 'server') {
+      query.scope = 'server';
+    }
+    if (options?.allowOutsideWorkspace) {
+      query.allowOutsideWorkspace = 'true';
+    }
+    if (options?.outsideFileGrant) {
+      query.outsideFileGrant = options.outsideFileGrant;
+    }
     const response = await runtimeFetch('/api/fs/raw', {
-      query: { path: target, download: true },
-      headers: directoryHeaders(getDirectory),
+      query,
+      headers: directoryHeaders(getDirectory, options?.directory),
     });
     if (!response.ok) {
       throw new Error(`Download failed (${response.status})`);

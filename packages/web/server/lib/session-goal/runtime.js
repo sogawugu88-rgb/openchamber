@@ -27,14 +27,20 @@ const OPENCHAMBER_SETTINGS_FILE = path.join(
   'settings.json',
 );
 
-const isSessionGoalEnabled = () => {
+const readOpenChamberSettings = () => {
   try {
     const raw = fs.readFileSync(OPENCHAMBER_SETTINGS_FILE, 'utf8');
-    const settings = JSON.parse(raw);
-    return settings?.sessionGoalEnabled !== false;
+    return JSON.parse(raw);
   } catch {
-    return true;
+    return null;
   }
+};
+
+const isSessionGoalEnabled = () => readOpenChamberSettings()?.sessionGoalEnabled !== false;
+
+const getSessionGoalAuditFailureLimit = () => {
+  const value = readOpenChamberSettings()?.sessionGoalAuditFailureLimit;
+  return Number.isSafeInteger(value) && value >= 1 && value <= 20 ? value : AUDIT_FAIL_LIMIT;
 };
 
 const IDLE_QUIET_MS = 15_000;
@@ -250,6 +256,7 @@ export const createSessionGoalRuntime = ({
   getSmallModelService,
   emitGoalNotification,
   isEnabled = isSessionGoalEnabled,
+  getAuditFailureLimit = getSessionGoalAuditFailureLimit,
   idleQuietMs = IDLE_QUIET_MS,
   kickoffQuietMs = KICKOFF_QUIET_MS,
   maxAutoTurns = MAX_AUTO_TURNS,
@@ -669,13 +676,14 @@ export const createSessionGoalRuntime = ({
       // resumable — Resume retries the audit on the next tick.
       if (!audit) {
         auditFailStreak += 1;
-        if (auditFailStreak >= AUDIT_FAIL_LIMIT) {
+        const auditFailureLimit = getAuditFailureLimit();
+        if (auditFailStreak >= auditFailureLimit) {
           await settleGoal({
             sessionId, directory, goal, status: 'blocked', statusReason: 'progress audit unavailable', tokensUsed, tokensBaseline, tokensCommitted, lastAccountedMessageID,
           });
           return;
         }
-        console.warn(`[session-goal] ${sessionId} audit unavailable, continuing unaudited (${auditFailStreak}/${AUDIT_FAIL_LIMIT})`);
+        console.warn(`[session-goal] ${sessionId} audit unavailable, continuing unaudited (${auditFailStreak}/${auditFailureLimit})`);
       } else {
         auditFailStreak = 0;
       }

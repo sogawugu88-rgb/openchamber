@@ -28,7 +28,7 @@ const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), 
 
 const requestPath = (input) => new URL(typeof input === 'string' ? input : input.url).pathname;
 
-const startIdleTick = async (fetchImpl) => {
+const startIdleTick = async (fetchImpl, getAuditFailureLimit) => {
   const getSmallModelService = vi.fn();
   vi.stubGlobal('fetch', fetchImpl);
   const runtime = createSessionGoalRuntime({
@@ -36,6 +36,7 @@ const startIdleTick = async (fetchImpl) => {
     getOpenCodeAuthHeaders: () => ({}),
     getSmallModelService,
     isEnabled: () => true,
+    ...(getAuditFailureLimit ? { getAuditFailureLimit } : {}),
     idleQuietMs: 10,
   });
   runtime.processPayload({
@@ -175,6 +176,56 @@ describe('session goal live activity gate', () => {
       status: 'complete',
       evaluationProviderID: 'provider',
       evaluationModelID: 'model',
+    });
+    runtime.stop();
+  });
+
+  it('uses the configured audit failure limit before blocking', async () => {
+    const requests = [];
+    const fetchImpl = vi.fn(async (input, init = {}) => {
+      const pathname = requestPath(input);
+      requests.push({ pathname, method: init.method ?? 'GET', body: init.body });
+      if (pathname === `/session/${SESSION_ID}` && init.method === 'PATCH') return jsonResponse(session);
+      if (pathname === `/session/${SESSION_ID}`) return jsonResponse(session);
+      if (pathname === '/session/status') return jsonResponse({});
+      if (pathname === `/session/${SESSION_ID}/children`) return jsonResponse([]);
+      if (pathname === `/session/${SESSION_ID}/message`) {
+        return jsonResponse([{
+          info: {
+            id: 'msg_assistant',
+            sessionID: SESSION_ID,
+            role: 'assistant',
+            providerID: 'provider',
+            modelID: 'model',
+            time: { completed: 2 },
+            tokens: { input: 1, output: 1, cache: { read: 0 } },
+          },
+          parts: [{ type: 'text', text: 'Still working.' }],
+        }]);
+      }
+      throw new Error(`Unexpected request: ${pathname}`);
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    const runtime = createSessionGoalRuntime({
+      buildOpenCodeUrl: (pathname) => `http://opencode.test${pathname}`,
+      getOpenCodeAuthHeaders: () => ({}),
+      getSmallModelService: async () => undefined,
+      getAuditFailureLimit: () => 1,
+      isEnabled: () => true,
+      idleQuietMs: 10,
+    });
+
+    runtime.processPayload({
+      type: 'session.status',
+      properties: { sessionID: SESSION_ID, status: { type: 'idle' }, directory: DIRECTORY },
+    });
+    await vi.runOnlyPendingTimersAsync();
+
+    const patch = requests.find((request) => request.pathname === `/session/${SESSION_ID}` && request.method === 'PATCH');
+    expect(patch).toBeDefined();
+    expect(JSON.parse(patch.body).metadata.openchamber.goal).toMatchObject({
+      status: 'blocked',
+      statusReason: 'progress audit unavailable',
     });
     runtime.stop();
   });

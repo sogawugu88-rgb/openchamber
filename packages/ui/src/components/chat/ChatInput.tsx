@@ -18,7 +18,8 @@ import {
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 import * as sessionActions from '@/sync/session-actions';
 import { buildLinkedIssue } from '@/lib/linkedIssues';
-import { useUserMessageHistory } from "@/sync/sync-context";
+import { useSessionMessageRecords, useUserMessageHistory } from "@/sync/sync-context";
+import { useSessionSettledDurationMs } from '@/sync/session-activity-timing';
 import { getInlineCommentDraftKey, useInlineCommentDraftStore, type InlineCommentDraft, type InlineCommentDraftTarget } from '@/stores/useInlineCommentDraftStore';
 import { useSnippetsStore } from '@/stores/useSnippetsStore';
 import { renderMagicPrompt } from '@/lib/magicPrompts';
@@ -142,12 +143,16 @@ import {
 } from './composer/ui/DraftTargetSelectors';
 import { ComposerAutocompletePopups } from './composer/ui/ComposerAutocompletePopups';
 import { ComposerFooter } from './composer/ui/ComposerFooter';
+import { SessionMetricsBar } from './composer/ui/SessionMetricsBar';
 import { MobilePillComposer } from './composer/ui/MobilePillComposer';
 import { ComposerContextChips } from './composer/ui/ComposerContextChips';
 import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
 import { RevertedMessageDock } from './composer/ui/RevertedMessageDock';
 import { SessionSuggestionChip } from '@/components/chat/SessionSuggestionChip';
 import { SessionGoalRow } from '@/components/chat/SessionGoalRow';
+import { deriveSessionMetrics, type SessionTimingProjection } from './sessionMetrics';
+
+const EMPTY_SESSION_TIMING: SessionTimingProjection = {};
 
 // Lazy like in ChatMessage: a static import would pull the @pierre/diffs and
 // Shiki stacks into the eager startup graph for a dialog opened on demand.
@@ -323,6 +328,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const currentDirectory = useEffectiveDirectory() ?? fallbackDirectory;
     const currentSessionDirectoryForSync = useSessionUIStore(
         React.useCallback((s) => currentSessionId ? s.getDirectoryForSession(currentSessionId) : null, [currentSessionId]),
+    );
+    const sessionMetricMessages = useSessionMessageRecords(
+        currentSessionId ?? '',
+        currentSessionDirectoryForSync ?? currentDirectory,
+    );
+    const settledSessionDurationMs = useSessionSettledDurationMs(currentSessionId ?? '');
+    const sessionMetricTiming = React.useMemo<SessionTimingProjection>(
+        () => settledSessionDurationMs === undefined
+            ? EMPTY_SESSION_TIMING
+            : { llmDurationMs: settledSessionDurationMs },
+        [settledSessionDurationMs],
+    );
+    const sessionMetrics = React.useMemo(
+        () => deriveSessionMetrics(sessionMetricMessages, sessionMetricTiming),
+        [sessionMetricMessages, sessionMetricTiming],
     );
     // btw mode: the CURRENT session's metadata links an active btw fork and
     // the panel is expanded, so this composer's sends route to the fork
@@ -2942,6 +2962,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     />
                 ) : null}
             </div>
+            {!isMobile || mobileComposerExpanded ? (
+                <SessionMetricsBar sessionMetrics={sessionMetrics} className="mt-1" />
+            ) : null}
             {showDesktopDraftPresentation ? (
                 <DraftPresetChips
                     onSubmit={(starter) => submitPresetPrompt(starter.submitText, starter.ref.type)}

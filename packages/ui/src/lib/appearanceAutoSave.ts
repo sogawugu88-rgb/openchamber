@@ -18,6 +18,8 @@ type AppearanceSlice = {
   sessionAutoContinueEnabled: boolean;
   sessionAutoContinueMaxRetries: number;
   sessionAutoContinuePrompt: string;
+  sessionGoalAuditFailureLimit: number;
+  codeServerBaseUrl: string;
   collapsibleThinkingBlocks: boolean;
   showDeletionDialog: boolean;
   nativeNotificationsEnabled: boolean;
@@ -77,6 +79,8 @@ export const startAppearanceAutoSave = (): void => {
     sessionAutoContinueEnabled: useUIStore.getState().sessionAutoContinueEnabled,
     sessionAutoContinueMaxRetries: useUIStore.getState().sessionAutoContinueMaxRetries,
     sessionAutoContinuePrompt: useUIStore.getState().sessionAutoContinuePrompt,
+    sessionGoalAuditFailureLimit: useUIStore.getState().sessionGoalAuditFailureLimit,
+    codeServerBaseUrl: useUIStore.getState().codeServerBaseUrl,
     collapsibleThinkingBlocks: useUIStore.getState().collapsibleThinkingBlocks,
     showDeletionDialog: useUIStore.getState().showDeletionDialog,
     nativeNotificationsEnabled: useUIStore.getState().nativeNotificationsEnabled,
@@ -123,6 +127,8 @@ export const startAppearanceAutoSave = (): void => {
       sessionAutoContinueEnabled: state.sessionAutoContinueEnabled,
       sessionAutoContinueMaxRetries: state.sessionAutoContinueMaxRetries,
       sessionAutoContinuePrompt: state.sessionAutoContinuePrompt,
+      sessionGoalAuditFailureLimit: state.sessionGoalAuditFailureLimit,
+      codeServerBaseUrl: state.codeServerBaseUrl,
       collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
       showDeletionDialog: state.showDeletionDialog,
       nativeNotificationsEnabled: state.nativeNotificationsEnabled,
@@ -194,6 +200,12 @@ export const startAppearanceAutoSave = (): void => {
     }
     if (current.sessionAutoContinuePrompt !== previous.sessionAutoContinuePrompt) {
       diff.sessionAutoContinuePrompt = current.sessionAutoContinuePrompt;
+    }
+    if (current.sessionGoalAuditFailureLimit !== previous.sessionGoalAuditFailureLimit) {
+      diff.sessionGoalAuditFailureLimit = current.sessionGoalAuditFailureLimit;
+    }
+    if (current.codeServerBaseUrl !== previous.codeServerBaseUrl) {
+      diff.codeServerBaseUrl = current.codeServerBaseUrl;
     }
     if (current.collapsibleThinkingBlocks !== previous.collapsibleThinkingBlocks) {
       diff.collapsibleThinkingBlocks = current.collapsibleThinkingBlocks;

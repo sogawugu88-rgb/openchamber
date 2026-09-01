@@ -109,9 +109,9 @@ export function ComposerFooter(props: ComposerFooterProps) {
     return (
         <div
             className={cn(
-                'bg-transparent flex-shrink-0',
+                'bg-transparent flex w-full flex-shrink-0',
                 footerPaddingClass,
-                isMobile ? 'flex items-center gap-x-1.5' : cn('flex items-center justify-between', footerGapClass)
+                isMobile ? 'items-center gap-x-1.5' : cn('items-center justify-between', footerGapClass)
             )}
             style={{
                 borderBottomLeftRadius: chatInputRadius,

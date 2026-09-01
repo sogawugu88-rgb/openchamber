@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type { SidebarSection } from '@/constants/sidebar';
+import { clampTerminalDockHeight, TERMINAL_DOCK_DEFAULT_HEIGHT } from '@/components/terminal/terminalDockState';
 import { createDeferredSafeJSONStorage } from './utils/safeStorage';
 import { SEMANTIC_TYPOGRAPHY, getTypographyVariable, type SemanticTypographyKey } from '@/lib/typography';
 import type { ShortcutCombo } from '@/lib/shortcuts';
@@ -695,6 +696,8 @@ interface UIStore {
   sessionAutoContinueEnabled: boolean;
   sessionAutoContinueMaxRetries: number;
   sessionAutoContinuePrompt: string;
+  sessionGoalAuditFailureLimit: number;
+  codeServerBaseUrl: string;
   collapsibleThinkingBlocks: boolean;
   chatRenderMode: ChatRenderMode;
   activityRenderMode: ActivityRenderMode;
@@ -713,6 +716,7 @@ interface UIStore {
   globalDraftStarters: DraftStarterRef[] | null;
   draftStartersVisible: boolean;
   terminalFontSize: number;
+  terminalDockHeight: number;
   terminalShell: TerminalShell;
   terminalLoginShells: TerminalShell[];
   editorFontSize: number;
@@ -807,6 +811,7 @@ interface UIStore {
   allowPromptingSubagentSessions: boolean;
   isExpandedInput: boolean;
   reportUsage: boolean;
+  showSessionTokenDetails: boolean;
   shortcutOverrides: Record<string, ShortcutCombo>;
   fileEditorKeymap: FileEditorKeymap;
 
@@ -886,6 +891,8 @@ interface UIStore {
   setSessionAutoContinueEnabled: (value: boolean) => void;
   setSessionAutoContinueMaxRetries: (value: number) => void;
   setSessionAutoContinuePrompt: (value: string) => void;
+  setSessionGoalAuditFailureLimit: (value: number) => void;
+  setCodeServerBaseUrl: (value: string) => void;
   setCollapsibleThinkingBlocks: (value: boolean) => void;
   setChatRenderMode: (value: ChatRenderMode) => void;
   setActivityRenderMode: (value: ActivityRenderMode) => void;
@@ -901,6 +908,7 @@ interface UIStore {
   setGlobalDraftStarters: (refs: DraftStarterRef[]) => void;
   setDraftStartersVisible: (value: boolean) => void;
   setTerminalFontSize: (size: number) => void;
+  setTerminalDockHeight: (height: number) => void;
   setTerminalShell: (shell: TerminalShell) => void;
   setTerminalLoginShells: (shells: TerminalShell[]) => void;
   setEditorFontSize: (size: number) => void;
@@ -990,6 +998,7 @@ interface UIStore {
   openMultiRunLauncher: () => void;
   openMultiRunLauncherWithPrompt: (prompt: string) => void;
   setReportUsage: (value: boolean) => void;
+  setShowSessionTokenDetails: (value: boolean) => void;
   setShortcutOverride: (actionId: string, combo: ShortcutCombo) => void;
   clearShortcutOverride: (actionId: string) => void;
   resetAllShortcutOverrides: () => void;
@@ -1060,6 +1069,8 @@ export const useUIStore = create<UIStore>()(
         sessionAutoContinueEnabled: true,
         sessionAutoContinueMaxRetries: 5,
         sessionAutoContinuePrompt: '',
+        sessionGoalAuditFailureLimit: 2,
+        codeServerBaseUrl: '',
         collapsibleThinkingBlocks: true,
         chatRenderMode: 'live',
         activityRenderMode: 'summary',
@@ -1074,6 +1085,7 @@ export const useUIStore = create<UIStore>()(
         fontSize: 100,
         globalDraftStarters: null,
         terminalFontSize: 14,
+        terminalDockHeight: TERMINAL_DOCK_DEFAULT_HEIGHT,
         terminalShell: 'auto',
         terminalLoginShells: [],
         editorFontSize: 13,
@@ -1152,6 +1164,7 @@ export const useUIStore = create<UIStore>()(
         draftStartersVisible: true,
         isExpandedInput: false,
         reportUsage: true,
+        showSessionTokenDetails: true,
         shortcutOverrides: {},
         fileEditorKeymap: 'default',
 
@@ -1838,6 +1851,14 @@ export const useUIStore = create<UIStore>()(
           set({ sessionAutoContinuePrompt: value });
         },
 
+        setSessionGoalAuditFailureLimit: (value) => {
+          set({ sessionGoalAuditFailureLimit: value });
+        },
+
+        setCodeServerBaseUrl: (value) => {
+          set({ codeServerBaseUrl: value });
+        },
+
         setCollapsibleThinkingBlocks: (value) => {
           set({ collapsibleThinkingBlocks: value });
         },
@@ -1903,6 +1924,10 @@ export const useUIStore = create<UIStore>()(
           const rounded = Math.round(size);
           const clamped = Math.max(9, Math.min(52, rounded));
           set({ terminalFontSize: clamped });
+        },
+
+        setTerminalDockHeight: (height) => {
+          set({ terminalDockHeight: clampTerminalDockHeight(height) });
         },
 
         setTerminalShell: (shell) => {
@@ -2424,6 +2449,9 @@ export const useUIStore = create<UIStore>()(
         setReportUsage: (value) => {
           set({ reportUsage: value });
         },
+        setShowSessionTokenDetails: (value) => {
+          set({ showSessionTokenDetails: value });
+        },
         viewPagerPage: 'center',
         setViewPagerPage: (page: 'left' | 'center' | 'right') => {
           set({ viewPagerPage: page });
@@ -2466,12 +2494,18 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createDeferredSafeJSONStorage(),
-        version: 18,
+        version: 19,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
           }
           const state = persistedState as Record<string, unknown>;
+
+          if (version < 19) {
+            state.terminalDockHeight = typeof state.terminalDockHeight === 'number'
+              ? clampTerminalDockHeight(state.terminalDockHeight)
+              : TERMINAL_DOCK_DEFAULT_HEIGHT;
+          }
 
           // v15 -> v16: the main-area surface concept is gone from persistence
           // (the chat always owns the desktop main area; panel surfaces have
@@ -2712,8 +2746,10 @@ export const useUIStore = create<UIStore>()(
           settingsRemoteInstancesSelectedId: state.settingsRemoteInstancesSelectedId,
           isSessionCreateDialogOpen: state.isSessionCreateDialogOpen,
           // Note: isSettingsDialogOpen intentionally NOT persisted
-          showReasoningTraces: state.showReasoningTraces,
-          streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
+           showReasoningTraces: state.showReasoningTraces,
+           showSessionTokenDetails: state.showSessionTokenDetails,
+           terminalDockHeight: state.terminalDockHeight,
+           streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
           sessionRecapEnabled: state.sessionRecapEnabled,
           sessionSuggestionEnabled: state.sessionSuggestionEnabled,
           sessionGoalEnabled: state.sessionGoalEnabled,
@@ -2722,6 +2758,8 @@ export const useUIStore = create<UIStore>()(
           sessionAutoContinueEnabled: state.sessionAutoContinueEnabled,
           sessionAutoContinueMaxRetries: state.sessionAutoContinueMaxRetries,
           sessionAutoContinuePrompt: state.sessionAutoContinuePrompt,
+          sessionGoalAuditFailureLimit: state.sessionGoalAuditFailureLimit,
+          codeServerBaseUrl: state.codeServerBaseUrl,
           collapsibleThinkingBlocks: state.collapsibleThinkingBlocks,
           chatRenderMode: state.chatRenderMode,
           activityRenderMode: state.activityRenderMode,

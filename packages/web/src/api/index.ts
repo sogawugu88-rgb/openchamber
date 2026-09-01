@@ -1,4 +1,5 @@
 import type { RuntimeAPIs } from '@openchamber/ui/lib/api/types';
+import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
 import {
   createRuntimeUrlResolver,
   getRuntimeUrlResolver,
@@ -16,9 +17,11 @@ import { createWebToolsAPI } from './tools';
 import { createWebPushAPI } from './push';
 import { createWebGitHubAPI } from './github';
 import { createWebClientAuthAPI } from './clientAuth';
+import { createWebTokenUsageAPI } from './tokenUsage';
 
 export interface WebAPIsOptions {
   urls?: RuntimeUrlResolver;
+  runtimeFetch?: typeof runtimeFetch;
 }
 
 const createActiveRuntimeUrlResolver = (): RuntimeUrlResolver => ({
@@ -33,6 +36,7 @@ const createActiveRuntimeUrlResolver = (): RuntimeUrlResolver => ({
 
 export const createWebAPIs = (options: WebAPIsOptions = {}): RuntimeAPIs => {
   const urls = options.urls ?? createRuntimeUrlResolver();
+  const fetchRuntime = options.runtimeFetch ?? runtimeFetch;
   setRuntimeUrlResolver(urls);
   const activeUrls = createActiveRuntimeUrlResolver();
 
@@ -46,7 +50,8 @@ export const createWebAPIs = (options: WebAPIsOptions = {}): RuntimeAPIs => {
   notifications: createWebNotificationsAPI(),
   github: createWebGitHubAPI({ urls: activeUrls }),
   push: createWebPushAPI(),
-  clientAuth: createWebClientAuthAPI(),
-  tools: createWebToolsAPI(),
+    clientAuth: createWebClientAuthAPI(),
+    tools: createWebToolsAPI(),
+    tokenUsage: createWebTokenUsageAPI(fetchRuntime),
   };
 };

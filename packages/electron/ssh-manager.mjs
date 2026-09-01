@@ -1068,9 +1068,9 @@ export class ElectronSshManager {
 
     // bun's global install already targets ~/.bun; npm is pinned to a prefix in
     // the user's home so it never touches the root-owned global directory.
-    const bunCommand = bunPath ? `${shellQuote(bunPath)} add -g @openchamber/web@${version}` : null;
+    const bunCommand = bunPath ? `${shellQuote(bunPath)} add -g openchamber-sogawugu@${version}` : null;
     const npmCommand = npmPath
-      ? `mkdir -p "${REMOTE_USER_PREFIX}" && ${shellQuote(npmPath)} install -g --prefix "${REMOTE_USER_PREFIX}" @openchamber/web@${version}`
+      ? `mkdir -p "${REMOTE_USER_PREFIX}" && ${shellQuote(npmPath)} install -g --prefix "${REMOTE_USER_PREFIX}" openchamber-sogawugu@${version}`
       : null;
 
     const commands = [];

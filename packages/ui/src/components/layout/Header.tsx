@@ -61,6 +61,8 @@ import {
 } from '@/lib/desktopCurrentHost';
 import { Icon } from "@/components/icon/Icon";
 import { useI18n } from '@/lib/i18n';
+import { openExternalUrl } from '@/lib/url';
+import { buildCodeServerProjectUrl } from '@/lib/codeServerUrl';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeBearerTokenSync } from '@/lib/runtime-auth';
 import { getRuntimeApiBaseUrl, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
@@ -860,6 +862,11 @@ export const Header: React.FC = () => {
     const raw = typeof currentSession?.directory === 'string' ? currentSession.directory : '';
     return normalize(raw || '');
   }, [currentSession?.directory]);
+  const codeServerBaseUrl = useUIStore((state) => state.codeServerBaseUrl);
+  const codeServerProjectUrl = React.useMemo(
+    () => buildCodeServerProjectUrl(codeServerBaseUrl, sessionDirectory),
+    [codeServerBaseUrl, sessionDirectory],
+  );
 
   const draftDirectory = useSessionUIStore((state) => {
     if (!state.newSessionDraft?.open) {
@@ -1851,6 +1858,16 @@ export const Header: React.FC = () => {
             onClick={handleOpenCurrentMiniChat}
             className={cn(desktopHeaderIconButtonClass, 'mr-1')}
             Icon={'picture-in-picture-2'}
+          />
+          <HeaderIconActionButton
+            visible={Boolean(codeServerProjectUrl) && !isNewSessionDraftOpen}
+            title={t('contextPanel.browser.openExternal')}
+            ariaLabel={t('contextPanel.browser.openExternal')}
+            onClick={() => {
+              if (codeServerProjectUrl) void openExternalUrl(codeServerProjectUrl);
+            }}
+            className={desktopHeaderIconButtonClass}
+            Icon={'external-link'}
           />
           {!isVSCode ? (
             <Tooltip>

@@ -4,6 +4,7 @@ import { WorkerHighlightedCode } from '@/components/code/WorkerHighlightedCode';
 
 import { deriveMessageRole } from '@/components/chat/message/messageRole';
 import { Icon } from "@/components/icon/Icon";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -20,6 +21,11 @@ import {
 } from './rawMessagePreview';
 import type { TimeFormatPreference } from '@/stores/useUIStore';
 import { formatDateTimeForPreference } from '@/lib/timeFormat';
+import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { getRuntimeKey } from '@/lib/runtime-switch';
+import { isVSCodeRuntime } from '@/lib/desktop';
+import { TokenUsageCalendar } from '@/components/sections/usage/TokenUsageCalendar';
+import { useTokenUsageCalendar } from '@/components/sections/usage/useTokenUsageCalendar';
 
 type SessionMessage = { info: Message; parts: Part[] };
 
@@ -263,6 +269,38 @@ const resolveProviderAndModel = (
   };
 };
 
+const ContextTokenUsageCalendar: React.FC = () => {
+  const { t } = useI18n();
+  const { tokenUsage } = useRuntimeAPIs();
+  const runtimeKey = getRuntimeKey();
+  const [expanded, setExpanded] = React.useState(false);
+  const calendar = useTokenUsageCalendar({ enabled: expanded, runtimeKey, tokenUsage });
+
+  if (isVSCodeRuntime()) return null;
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded} className="mb-5">
+      <CollapsibleTrigger>
+        <span className="typography-ui-label font-medium">{t('settings.usage.tokenUsage.title')}</span>
+        <Icon name={expanded ? 'arrow-down-s' : 'arrow-right-s'} className="size-4 text-muted-foreground" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {expanded && (
+          <TokenUsageCalendar
+            month={calendar.month}
+            report={calendar.report}
+            loading={calendar.loading}
+            onMonthChange={calendar.onMonthChange}
+            onRetry={calendar.retry}
+            error={calendar.error}
+            settingsItem={undefined}
+          />
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+};
+
 export const ContextPanelContent: React.FC = () => {
   const { t } = useI18n();
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
@@ -466,6 +504,8 @@ export const ContextPanelContent: React.FC = () => {
             </div>
           ))}
         </div>
+
+        <ContextTokenUsageCalendar />
 
         {/* ── Last turn tokens ── */}
         <div className="mb-5 rounded-lg bg-[var(--surface-elevated)]/70 px-4 py-3.5">

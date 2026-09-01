@@ -157,6 +157,17 @@ describe('useUIStore per-surface panel widths', () => {
   });
 });
 
+describe('useUIStore terminal dock height', () => {
+  test('stores a clamped terminal dock height', () => {
+    const state = useUIStore.getState();
+    state.setTerminalDockHeight(480);
+    expect(useUIStore.getState().terminalDockHeight).toBe(480);
+    state.setTerminalDockHeight(80);
+    expect(useUIStore.getState().terminalDockHeight).toBe(160);
+    state.setTerminalDockHeight(280);
+  });
+});
+
 describe('useUIStore contextRailOrder', () => {
   test('setContextRailOrder drops empty and duplicate ids', () => {
     useUIStore.getState().setContextRailOrder(['diff', 'diff', '', 'editor']);

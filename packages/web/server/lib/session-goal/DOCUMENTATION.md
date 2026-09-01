@@ -122,12 +122,13 @@ before touching the filesystem). Rationale: metadata rides every
      termination authority besides the hard stops above — the working agent
      has no channel to settle its own goal. `complete` settles; `blocked`
      increments `blockedStreak` and settles only after 3 consecutive blocked
-     verdicts, so a one-off snag cannot end the goal. Audit failure/absence
-     tolerates ONE consecutive unaudited continuation (`auditFailStreak`); a
-     second consecutive failure settles the goal as `blocked` ("progress
-     audit unavailable") — resumable, and settling resets the streak so
-     Resume gets fresh tolerance. A dead small model can never drive the
-     loop blind to the turn cap;
+      verdicts, so a one-off snag cannot end the goal. Audit failure/absence
+      tolerates consecutive unaudited continuations according to the persisted
+      `sessionGoalAuditFailureLimit` setting (valid range `1..20`, default `2`);
+      reaching the limit settles the goal as `blocked` ("progress audit
+      unavailable"). The state remains resumable, and settling resets the
+      streak so Resume gets fresh tolerance. A dead small model can never drive
+      the loop blind to the turn cap;
    - continue: persist accounting + `turnsUsed` first (a crash after the
      write just waits for the next idle tick; the reverse could double-send),
      re-check the tail, then `POST /session/:id/prompt_async` with the
