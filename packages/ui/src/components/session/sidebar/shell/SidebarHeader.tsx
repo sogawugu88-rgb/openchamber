@@ -21,6 +21,7 @@ type Props = {
   showProjectDisplayControls: boolean;
   showRecentControls: boolean;
   handleOpenDirectoryDialog: () => void;
+  onOpenTaskboard: () => void;
   onOpenScheduled: () => void;
   onOpenMultiRun: () => void;
   canOpenMultiRun: boolean;
@@ -45,6 +46,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
     showProjectDisplayControls,
     showRecentControls,
     handleOpenDirectoryDialog,
+    onOpenTaskboard,
     onOpenScheduled,
     onOpenMultiRun,
     canOpenMultiRun,
@@ -90,6 +92,20 @@ export function SidebarHeader(props: Props): React.ReactNode {
               icon inset inside the 24px buttons so the first glyph lines up
               with the New-session icon above (16px from the sidebar edge). */}
           <div className="ml-[3px] flex items-center gap-1.5">
+            <Tooltip delayDuration={500}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onOpenTaskboard}
+                  className={cn(headerActionButtonClass, 'text-muted-foreground hover:text-foreground hover:bg-transparent')}
+                  aria-label={t('taskboard.title')}
+                >
+                  <Icon name="list-check-3" className={headerActionIconClass} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}><p>{t('taskboard.title')}</p></TooltipContent>
+            </Tooltip>
+
             <Tooltip delayDuration={500}>
               <TooltipTrigger asChild>
                 <button

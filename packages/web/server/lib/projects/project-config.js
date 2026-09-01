@@ -1,5 +1,6 @@
 import { DateTime, IANAZone } from 'luxon';
 import parser from 'cron-parser';
+import { normalizeTaskboard } from '../taskboard/domain.js';
 
 const PROJECT_CONFIG_VERSION = 1;
 export const MAX_TASK_NAME_LENGTH = 80;
@@ -347,6 +348,12 @@ const normalizeTaskForStorage = (value, options) => {
 const createEmptyProjectConfig = () => ({
   version: PROJECT_CONFIG_VERSION,
   scheduledTasks: [],
+  taskboard: {
+    version: 1,
+    nextTaskNumber: 1,
+    autoRun: false,
+    tasks: [],
+  },
 });
 
 export const createProjectConfigRuntime = (deps) => {
@@ -532,7 +539,8 @@ export const createProjectConfigRuntime = (deps) => {
     const merged = {
       ...existing,
       version: PROJECT_CONFIG_VERSION,
-      scheduledTasks: Array.isArray(config?.scheduledTasks) ? config.scheduledTasks : [],
+      ...(Array.isArray(config?.scheduledTasks) ? { scheduledTasks: config.scheduledTasks } : {}),
+      ...(config?.taskboard !== undefined ? { taskboard: config.taskboard } : {}),
     };
 
     await fsPromises.mkdir(parentDirectory, { recursive: true });
@@ -578,6 +586,31 @@ export const createProjectConfigRuntime = (deps) => {
   const listScheduledTasks = async (projectID) => {
     const config = await readProjectConfigFromDisk(projectID);
     return config.scheduledTasks;
+  };
+
+  const readTaskboard = async (projectID) => {
+    const parsed = await readRawProjectConfigFromDisk(projectID);
+    return normalizeTaskboard(parsed.taskboard, { projectId: projectID, createId: taskIDFactory });
+  };
+
+  const mutateTaskboard = async (projectID, mutate) => {
+    if (typeof mutate !== 'function') {
+      throw new Error('mutateTaskboard requires a function');
+    }
+
+    return withProjectWriteLock(projectID, async () => {
+      const current = await readTaskboard(projectID);
+      const mutation = await mutate(current);
+      const nextTaskboard = normalizeTaskboard(
+        mutation?.taskboard ?? current,
+        { projectId: projectID, createId: taskIDFactory },
+      );
+      await writeProjectConfigToDisk(projectID, { taskboard: nextTaskboard });
+      return {
+        taskboard: nextTaskboard,
+        result: mutation?.result,
+      };
+    });
   };
 
   const upsertScheduledTask = async (projectID, taskInput) => {
@@ -879,6 +912,8 @@ export const createProjectConfigRuntime = (deps) => {
 
   return {
     listScheduledTasks,
+    readTaskboard,
+    mutateTaskboard,
     upsertScheduledTask,
     deleteScheduledTask,
     updateScheduledTaskState,

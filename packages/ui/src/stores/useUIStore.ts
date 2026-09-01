@@ -662,6 +662,7 @@ interface UIStore {
   isOpenCodeStatusDialogOpen: boolean;
   openCodeStatusText: string;
   isSessionCreateDialogOpen: boolean;
+  isTaskboardPageOpen: boolean;
   isScheduledTasksDialogOpen: boolean;
   isArchivePageOpen: boolean;
   worktreesPageProjectId: string | null;
@@ -859,6 +860,7 @@ interface UIStore {
   setOpenCodeStatusDialogOpen: (open: boolean) => void;
   setOpenCodeStatusText: (text: string) => void;
   setSessionCreateDialogOpen: (open: boolean) => void;
+  setTaskboardPageOpen: (open: boolean) => void;
   setScheduledTasksDialogOpen: (open: boolean) => void;
   setArchivePageOpen: (open: boolean) => void;
   setWorktreesPageProjectId: (projectId: string | null) => void;
@@ -1033,6 +1035,7 @@ export const useUIStore = create<UIStore>()(
         isOpenCodeStatusDialogOpen: false,
         openCodeStatusText: '',
         isSessionCreateDialogOpen: false,
+        isTaskboardPageOpen: false,
         isScheduledTasksDialogOpen: false,
         isArchivePageOpen: false,
         worktreesPageProjectId: null,
@@ -1708,30 +1711,37 @@ export const useUIStore = create<UIStore>()(
           set({ isSessionCreateDialogOpen: open });
         },
 
+        setTaskboardPageOpen: (open) => {
+          set(open
+            ? { isTaskboardPageOpen: true, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, worktreesPageProjectId: null, isMultiRunLauncherOpen: false }
+            : { isTaskboardPageOpen: false });
+        },
+
         setScheduledTasksDialogOpen: (open) => {
           set(open
-            ? { isScheduledTasksDialogOpen: true, isArchivePageOpen: false, worktreesPageProjectId: null, isMultiRunLauncherOpen: false }
+            ? { isTaskboardPageOpen: false, isScheduledTasksDialogOpen: true, isArchivePageOpen: false, worktreesPageProjectId: null, isMultiRunLauncherOpen: false }
             : { isScheduledTasksDialogOpen: false });
         },
 
         setArchivePageOpen: (open) => {
           set(open
-            ? { isArchivePageOpen: true, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, isMultiRunLauncherOpen: false }
+            ? { isTaskboardPageOpen: false, isArchivePageOpen: true, isScheduledTasksDialogOpen: false, worktreesPageProjectId: null, isMultiRunLauncherOpen: false }
             : { isArchivePageOpen: false });
         },
 
         setWorktreesPageProjectId: (projectId) => {
           set(projectId
-            ? { worktreesPageProjectId: projectId, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isMultiRunLauncherOpen: false }
+            ? { isTaskboardPageOpen: false, worktreesPageProjectId: projectId, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, isMultiRunLauncherOpen: false }
             : { worktreesPageProjectId: null });
         },
 
         closeMainSurfaces: () => {
           const state = get();
-          if (!state.isScheduledTasksDialogOpen && !state.isArchivePageOpen && !state.worktreesPageProjectId && !state.isMultiRunLauncherOpen) {
+          if (!state.isTaskboardPageOpen && !state.isScheduledTasksDialogOpen && !state.isArchivePageOpen && !state.worktreesPageProjectId && !state.isMultiRunLauncherOpen) {
             return;
           }
           set({
+            isTaskboardPageOpen: false,
             isScheduledTasksDialogOpen: false,
             isArchivePageOpen: false,
             worktreesPageProjectId: null,
@@ -2240,7 +2250,7 @@ export const useUIStore = create<UIStore>()(
           set((state) => ({
             isMultiRunLauncherOpen: open,
             multiRunLauncherPrefillPrompt: open ? state.multiRunLauncherPrefillPrompt : '',
-            ...(open ? { isScheduledTasksDialogOpen: false, isArchivePageOpen: false, worktreesPageProjectId: null } : {}),
+            ...(open ? { isTaskboardPageOpen: false, isScheduledTasksDialogOpen: false, isArchivePageOpen: false, worktreesPageProjectId: null } : {}),
           }));
         },
 
@@ -2249,6 +2259,7 @@ export const useUIStore = create<UIStore>()(
             isMultiRunLauncherOpen: true,
             multiRunLauncherPrefillPrompt: '',
             isSessionSwitcherOpen: false,
+            isTaskboardPageOpen: false,
             isScheduledTasksDialogOpen: false,
             isArchivePageOpen: false,
             worktreesPageProjectId: null,
@@ -2260,6 +2271,7 @@ export const useUIStore = create<UIStore>()(
             isMultiRunLauncherOpen: true,
             multiRunLauncherPrefillPrompt: prompt,
             isSessionSwitcherOpen: false,
+            isTaskboardPageOpen: false,
             isScheduledTasksDialogOpen: false,
             isArchivePageOpen: false,
             worktreesPageProjectId: null,

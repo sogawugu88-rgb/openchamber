@@ -4,7 +4,7 @@
  * The server is the sole writer of `<projectsDir>/<projectId>/context.json`.
  * The sibling `<projectsDir>/<projectId>.json` stays client-owned (worktree
  * setup, draft starters, project actions) and server-owned only for
- * `version`/`scheduledTasks`; keeping the two apart is what removes the
+ * `version`/`scheduledTasks`/`taskboard`; keeping the two apart is what removes the
  * cross-process read-modify-write race that a shared file would create.
  *
  * Plan bodies live as markdown at `<projectsDir>/<projectId>/plans/<file>.md`

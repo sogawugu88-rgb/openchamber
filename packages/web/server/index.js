@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import express from 'express';
 import compression from 'compression';
+import { createOpencodeClient } from '@opencode-ai/sdk/v2';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
@@ -77,6 +78,8 @@ import { createOpenCodeWatcherRuntime } from './lib/opencode/watcher.js';
 import { createSessionAssistRuntime } from './lib/session-assist/runtime.js';
 import { createSessionGoalRuntime } from './lib/session-goal/runtime.js';
 import { createSessionAutoRetryRuntime } from './lib/session-auto-retry/runtime.js';
+import { createTaskboardRuntime } from './lib/taskboard/runtime.js';
+import { createTaskboardStore } from './lib/taskboard/store.js';
 import { createContextObligatoryRuntime } from './lib/context-obligatory/runtime.js';
 import { createSessionKnowledgeRuntime } from './lib/session-knowledge/runtime.js';
 import { createScheduledTasksRuntime } from './lib/scheduled-tasks/runtime.js';
@@ -124,6 +127,7 @@ const DESKTOP_NOTIFY_PREFIX = '[OpenChamberDesktopNotify] ';
 const uiNotificationClients = new Set();
 const uiNotificationWsClients = new Set();
 const uiOpenChamberEventClients = new Set();
+let taskboardRuntime = null;
 const HEALTH_CHECK_INTERVAL = 15000;
 const SHUTDOWN_TIMEOUT = 10000;
 const MODELS_DEV_API_URL = 'https://models.dev/api.json';
@@ -481,6 +485,7 @@ const projectConfigRuntime = createProjectConfigRuntime({
   path,
   projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
 });
+const taskboardStore = createTaskboardStore({ projectConfigRuntime });
 
 const projectContextRuntime = createProjectContextRuntime({
   fsPromises,
@@ -907,6 +912,7 @@ globalMessageStreamHub.subscribeEvent((event) => {
   sessionAssistRuntime.processPayload(payload, directory);
   sessionGoalRuntime.processPayload(payload, directory);
   sessionAutoRetryRuntime.processPayload(payload, directory);
+  taskboardRuntime?.processPayload(payload, directory);
   contextObligatoryRuntime.processPayload(payload, directory);
 });
 
@@ -1320,6 +1326,23 @@ const emitAgentMemoryChangedEvent = (event) => {
     }
   }
 };
+const emitTaskboardEvent = (event) => {
+  for (const client of uiOpenChamberEventClients) {
+    try {
+      const properties = {
+        projectId: event.projectId,
+        kind: event.kind,
+      };
+      if (event.taskId) properties.taskId = event.taskId;
+      writeSseEvent(client, {
+        type: 'openchamber:taskboard-updated',
+        properties,
+      });
+    } catch {
+      uiOpenChamberEventClients.delete(client);
+    }
+  }
+};
 const scheduledTaskService = createScheduledTaskService({
   readSettingsFromDiskMigrated,
   sanitizeProjects,
@@ -1335,6 +1358,37 @@ const openChamberSessionService = createOpenChamberSessionService({
   waitForOpenCodeReady,
   emitSessionCreatedEvent,
   sessionKnowledgeRuntime,
+});
+taskboardRuntime = createTaskboardRuntime({
+  taskboardStore,
+  listProjects: async () => {
+    const settings = await readSettingsFromDiskMigrated();
+    return sanitizeProjects(settings?.projects || []);
+  },
+  openChamberSessionService,
+  fetchSessionStatus: async (sessionId, directory) => {
+    const client = createOpencodeClient({
+      baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
+      headers: getOpenCodeAuthHeaders(),
+    });
+    const response = await client.session.status({ directory });
+    const statuses = response?.data;
+    return statuses?.[sessionId] || { type: 'idle' };
+  },
+  fetchSessionMessages: async (sessionId, directory) => {
+    const client = createOpencodeClient({
+      baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
+      headers: getOpenCodeAuthHeaders(),
+    });
+    const response = await client.session.messages({
+      sessionID: sessionId,
+      directory,
+      limit: 40,
+    });
+    return Array.isArray(response?.data) ? response.data : null;
+  },
+  emitTaskboardEvent,
+  logger: console,
 });
 // Browser actions are published to whichever OpenChamber clients are connected;
 // the one owning the browser panel answers. `emitRequest` returns the number of
@@ -1430,6 +1484,7 @@ const gracefulShutdownRuntime = createGracefulShutdownRuntime({
   sessionAssistRuntime,
   sessionGoalRuntime,
   sessionAutoRetryRuntime,
+  taskboardRuntime,
   contextObligatoryRuntime,
   sessionRuntime,
   getHealthCheckInterval: () => healthCheckInterval,
@@ -1911,6 +1966,7 @@ async function main(options = {}) {
     sessionKnowledgeRuntime,
     scheduledTasksRuntime,
     scheduledTaskService,
+    taskboardRuntime,
     openChamberSessionService,
     openChamberControlService,
     waitForOpenCodeReady,
@@ -1979,6 +2035,11 @@ async function main(options = {}) {
   } catch (error) {
     console.warn('[ScheduledTasks] Failed to start runtime:', error?.message || error);
   }
+  try {
+    await taskboardRuntime?.start();
+  } catch (error) {
+    console.warn('[Taskboard] Failed to start runtime:', error?.message || error);
+  }
 
   // Only opens a relay control socket when the user opted in (config enabled).
   // Reconcile the relay lifecycle from demand on startup: run it if any relay
@@ -2005,6 +2066,7 @@ async function main(options = {}) {
         active: Boolean(tunnelService.getPublicUrl()),
       },
       scheduledTasks: scheduledTasksRuntime.getStatus(),
+      taskboard: taskboardRuntime?.getStatus?.() || { running: false },
     }),
     isReady: () => isOpenCodeReady,
     restartOpenCode: () => restartOpenCode(),

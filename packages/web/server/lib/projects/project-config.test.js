@@ -21,6 +21,38 @@ const createRuntime = async () => {
 };
 
 describe('project-config runtime', () => {
+  it('round trips taskboard data without overwriting scheduled tasks', async () => {
+    const { runtime, cleanup } = await createRuntime();
+    try {
+      await runtime.upsertScheduledTask('taskboard-project', {
+        name: 'Nightly check',
+        schedule: { kind: 'daily', time: '09:00', timezone: 'UTC' },
+        execution: {
+          prompt: 'Run checks',
+          providerID: 'provider',
+          modelID: 'model',
+        },
+      });
+
+      await runtime.mutateTaskboard('taskboard-project', (current) => ({
+        taskboard: {
+          ...current,
+          autoRun: true,
+          tasks: [{ id: 'task-1', title: 'Ship board', projectId: 'taskboard-project' }],
+        },
+        result: 'saved',
+      }));
+
+      const board = await runtime.readTaskboard('taskboard-project');
+      expect(board.autoRun).toBe(true);
+      expect(board.tasks).toHaveLength(1);
+      expect(board.tasks[0].title).toBe('Ship board');
+      expect((await runtime.listScheduledTasks('taskboard-project'))).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('creates and persists a scheduled task', async () => {
     const { runtime, cleanup } = await createRuntime();
     try {

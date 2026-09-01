@@ -115,6 +115,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   const toggleHelpDialog = useUIStore((state) => state.toggleHelpDialog);
   const setAboutDialogOpen = useUIStore((state) => state.setAboutDialogOpen);
   const setSessionSwitcherOpen = useUIStore((state) => state.setSessionSwitcherOpen);
+  const setTaskboardPageOpen = useUIStore((state) => state.setTaskboardPageOpen);
   const setScheduledTasksDialogOpen = useUIStore((state) => state.setScheduledTasksDialogOpen);
   const setArchivePageOpen = useUIStore((state) => state.setArchivePageOpen);
   const setWorktreesPageProjectId = useUIStore((state) => state.setWorktreesPageProjectId);
@@ -559,6 +560,10 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
         showProjectDisplayControls={!isVSCode}
         showRecentControls={!isVSCode}
         handleOpenDirectoryDialog={handleOpenDirectoryDialog}
+        onOpenTaskboard={() => {
+          if (mobileVariant) setSessionSwitcherOpen(false);
+          setTaskboardPageOpen(true);
+        }}
         onOpenScheduled={() => {
           if (mobileVariant) setSessionSwitcherOpen(false);
           setScheduledTasksDialogOpen(true);

@@ -5,6 +5,8 @@ mock.module('./runtime-url', () => ({
 }));
 
 mock.module('./runtime-switch', () => ({
+  getRuntimeApiBaseUrl: () => '',
+  getRuntimeKey: () => 'local',
   subscribeRuntimeEndpointChanged: () => () => undefined,
 }));
 
@@ -70,6 +72,41 @@ describe('openchamber events', () => {
         dispatchedAsCommand: false,
       },
     ]);
+    unsubscribe();
+  });
+
+  test('dispatches taskboard invalidation events', async () => {
+    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const events: unknown[] = [];
+    const unsubscribe = subscribeOpenchamberEvents((event) => events.push(event));
+    const source = MockEventSource.instances[0];
+
+    source.onmessage?.({
+      data: JSON.stringify({
+        type: 'openchamber:taskboard-updated',
+        properties: {
+          projectId: 'project_1',
+          taskId: 'task_1',
+          kind: 'moved',
+        },
+      }),
+    });
+
+    expect(events).toEqual([
+      { type: 'taskboard-updated', projectId: 'project_1', taskId: 'task_1', kind: 'moved' },
+    ]);
+    unsubscribe();
+  });
+
+  test('notifies listeners when the OpenChamber event stream reconnects', async () => {
+    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const events: unknown[] = [];
+    const unsubscribe = subscribeOpenchamberEvents((event) => events.push(event));
+    const source = MockEventSource.instances[0];
+
+    source.onmessage?.({ data: JSON.stringify({ type: 'openchamber:event-stream-ready', properties: {} }) });
+
+    expect(events).toEqual([{ type: 'event-stream-ready' }]);
     unsubscribe();
   });
 });

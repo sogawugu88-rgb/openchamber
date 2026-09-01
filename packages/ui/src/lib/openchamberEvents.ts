@@ -1,5 +1,6 @@
 import { getRuntimeUrlResolver } from './runtime-url';
 import { subscribeRuntimeEndpointChanged } from './runtime-switch';
+import { z } from 'zod';
 
 type ScheduledTaskRanEvent = {
   type: 'scheduled-task-ran';
@@ -42,11 +43,28 @@ type AgentMemoryChangedEvent = {
   projectId?: string;
 };
 
+type TaskboardUpdatedEvent = {
+  type: 'taskboard-updated';
+  projectId: string;
+  taskId?: string;
+  kind: string;
+};
+
+type EventStreamReadyEvent = { type: 'event-stream-ready' };
+
+const taskboardUpdatedPropertiesSchema = z.object({
+  projectId: z.string().min(1),
+  taskId: z.string().min(1).optional(),
+  kind: z.string().min(1),
+});
+
 type OpenChamberEvent =
   | ScheduledTaskRanEvent
   | SessionCreatedEvent
   | BrowserControlRequestEvent
-  | AgentMemoryChangedEvent;
+  | AgentMemoryChangedEvent
+  | TaskboardUpdatedEvent
+  | EventStreamReadyEvent;
 type Listener = (event: OpenChamberEvent) => void;
 
 let eventSource: EventSource | null = null;
@@ -126,6 +144,7 @@ const getEventProperties = (properties: unknown): Record<string, unknown> | null
 const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) => {
   if (envelope.type === 'openchamber:event-stream-ready') {
     reconnectAttempt = 0;
+    for (const listener of listeners) listener({ type: 'event-stream-ready' });
     return;
   }
 
@@ -194,6 +213,19 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     for (const listener of listeners) {
       listener(nextEvent);
     }
+    return;
+  }
+
+  if (envelope.type === 'openchamber:taskboard-updated') {
+    const parsed = taskboardUpdatedPropertiesSchema.safeParse(envelope.properties);
+    if (!parsed.success) return;
+    const nextEvent: TaskboardUpdatedEvent = {
+      type: 'taskboard-updated',
+      projectId: parsed.data.projectId,
+      kind: parsed.data.kind,
+    };
+    if (parsed.data.taskId) nextEvent.taskId = parsed.data.taskId;
+    for (const listener of listeners) listener(nextEvent);
     return;
   }
 

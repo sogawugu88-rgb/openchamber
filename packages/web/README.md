@@ -238,6 +238,7 @@ systemctl --user enable --now opencode openchamber
 - **Background notifications** - know when your agent finishes, even from another tab
 - **Self-update** - update and restart from the UI, server settings stay intact
 - **Cross-tab tracking** - session activity stays in sync across browser tabs
+- **Taskboard automation** - queue project tasks, run them in independent OpenCode sessions, and review results before acceptance
 
 - Cloudflare tunnel access with quick, managed-remote, and managed-local modes
 - One-scan onboarding with tunnel QR + password URL helpers

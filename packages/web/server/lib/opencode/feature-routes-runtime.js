@@ -16,6 +16,7 @@ import { registerConfigEntityRoutes } from './config-entity-routes.js';
 import { registerSettingsUtilityRoutes } from './core-routes.js';
 import { registerProjectIconRoutes } from './project-icon-routes.js';
 import { registerScheduledTaskRoutes } from '../scheduled-tasks/routes.js';
+import { registerTaskboardRoutes } from '../taskboard/routes.js';
 import { registerOpenChamberSessionRoutes } from '../openchamber-sessions/routes.js';
 import { registerOpenChamberControlRoutes } from '../openchamber-control/routes.js';
 import { registerMarkdownImageGrantRoutes } from '../markdown-image-grants/routes.js';
@@ -124,6 +125,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       sessionKnowledgeRuntime,
       scheduledTasksRuntime,
       scheduledTaskService,
+      taskboardRuntime,
       openChamberSessionService,
       openChamberControlService,
       waitForOpenCodeReady,
@@ -183,6 +185,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       getOpenChamberEventClients,
       writeSseEvent,
     });
+
+    registerTaskboardRoutes(app, { taskboardRuntime });
 
     registerOpenChamberSessionRoutes(app, {
       readSettingsFromDiskMigrated,
