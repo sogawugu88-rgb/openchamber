@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { FilesAPI } from "@/lib/api/types"
+import type { FileSystemOperationOptions, FilesAPI } from "@/lib/api/types"
 import { createContentCachedFiles } from "./content-cache-owner"
 
 const deferred = <T>() => {
@@ -55,6 +55,34 @@ describe("content cache owner", () => {
 
     expect((await reading).content).toBe("new")
     expect(reads).toBe(2)
+    owner.dispose()
+  })
+
+  test("preserves external operation scope through mutation wrappers", async () => {
+    const received: FileSystemOperationOptions[] = []
+    const files: FilesAPI = {
+      listDirectory: async () => ({ directory: "/workspace", entries: [] }),
+      search: async () => [],
+      createDirectory: async (path) => ({ success: true, path }),
+      writeFile: async (path, content, options) => {
+        received.push(options ?? {})
+        return { success: true, path }
+      },
+      delete: async () => ({ success: true }),
+      rename: async (_oldPath, newPath, options) => {
+        received.push(options ?? {})
+        return { success: true, path: newPath }
+      },
+    }
+    const owner = createContentCachedFiles(files)
+
+    await owner.files.writeFile!("/outside/file.txt", "updated", { scope: "server", directory: "/workspace" })
+    await owner.files.rename!("/outside/file.txt", "/outside/renamed.txt", { scope: "server", directory: "/workspace" })
+
+    expect(received).toEqual([
+      { scope: "server", directory: "/workspace" },
+      { scope: "server", directory: "/workspace" },
+    ])
     owner.dispose()
   })
 

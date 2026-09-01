@@ -109,6 +109,22 @@ const displayPathToAbsolutePath = (value: string, homeDirectory: string): string
   return trimmed;
 };
 
+const getNewDirectoryPath = (parentDirectory: string, rawName: string): string | null => {
+  const normalizedParent = normalizeSeparators(parentDirectory.trim());
+  const parent = normalizedParent === '/' || /^[A-Za-z]:\/$/.test(normalizedParent)
+    ? normalizedParent
+    : trimTrailingSeparators(normalizedParent);
+  const name = rawName.trim();
+  if (!parent || !name || name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
+    return null;
+  }
+
+  const normalizedName = normalizeSeparators(name);
+  return parent === '/' || /^[A-Za-z]:\/$/.test(parent)
+    ? `${parent}${normalizedName}`
+    : `${parent}/${normalizedName}`;
+};
+
 const isPrimaryModifierPressed = (event: React.KeyboardEvent<HTMLInputElement>): boolean => {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
@@ -172,11 +188,15 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);
   const [isConfirming, setIsConfirming] = React.useState(false);
   const [isOpeningFinder, setIsOpeningFinder] = React.useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState('');
+  const [isCreatingFolderSubmitting, setIsCreatingFolderSubmitting] = React.useState(false);
   const [addButtonWidth, setAddButtonWidth] = React.useState(0);
   const [isCloneMode, setIsCloneMode] = React.useState(false);
   const [cloneRemoteUrl, setCloneRemoteUrl] = React.useState('');
   const [selectedGitIdentityId, setSelectedGitIdentityId] = React.useState<string | null>(null);
   const [showHidden, setShowHidden] = React.useState(false);
+  const newFolderInputRef = React.useRef<HTMLInputElement>(null);
 
   const explorerRootDirectory = dialogHomeDirectory || homeDirectory;
 
@@ -193,6 +213,9 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     setHighlightedIndex(0);
     setIsConfirming(false);
     setIsOpeningFinder(false);
+    setIsCreatingFolder(false);
+    setNewFolderName('');
+    setIsCreatingFolderSubmitting(false);
     setIsCloneMode(false);
     setCloneRemoteUrl('');
     setSelectedGitIdentityId(null);
@@ -351,6 +374,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   );
   const canAddProject = !isConfirming
     && !isOpeningFinder
+    && !isCreatingFolderSubmitting
     && !isAlreadyAdded
     && browseErrorReason !== 'os-permission'
     && browseErrorReason !== 'invalid-response'
@@ -428,6 +452,55 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     openProjectDraft(project.id, project.path);
   }, [addProject, addedProjectPaths, openProjectDraft, t]);
 
+  const handleOpenCreateFolder = React.useCallback(() => {
+    if (isConfirming || isOpeningFinder || isCreatingFolderSubmitting || isCloneMode) return;
+    setNewFolderName('');
+    setIsCreatingFolder(true);
+    requestAnimationFrame(() => {
+      newFolderInputRef.current?.focus();
+    });
+  }, [isCloneMode, isConfirming, isCreatingFolderSubmitting, isOpeningFinder]);
+
+  const handleCancelCreateFolder = React.useCallback(() => {
+    if (isCreatingFolderSubmitting) return;
+    setIsCreatingFolder(false);
+    setNewFolderName('');
+  }, [isCreatingFolderSubmitting]);
+
+  const handleCreateFolder = React.useCallback(async () => {
+    if (isCreatingFolderSubmitting || isConfirming || isOpeningFinder || isCloneMode) return;
+
+    const newFolderPath = getNewDirectoryPath(browseDirectoryAbsolutePath, newFolderName);
+    if (!newFolderName.trim()) {
+      toast.error(t('sidebarFilesTree.toast.folderNameRequired'));
+      return;
+    }
+    if (!newFolderPath) {
+      toast.error(t('directoryExplorerDialog.toast.selectValidDirectoryPath'));
+      return;
+    }
+
+    setIsCreatingFolderSubmitting(true);
+    try {
+      const result = await opencodeClient.createDirectory(newFolderPath, { asProject: true });
+      const project = addProject(result.path);
+      if (!project) {
+        toast.error(t('directoryExplorerDialog.toast.failedToAddProject'), {
+          description: t('directoryExplorerDialog.toast.selectValidDirectoryPath'),
+        });
+        return;
+      }
+      toast.success(t('sidebarFilesTree.toast.folderCreated'));
+      openProjectDraft(project.id, project.path);
+    } catch (error) {
+      toast.error(t('directoryExplorerDialog.toast.failedToSelectDirectory'), {
+        description: error instanceof Error ? error.message : t('directoryExplorerDialog.toast.unknownError'),
+      });
+    } finally {
+      setIsCreatingFolderSubmitting(false);
+    }
+  }, [addProject, browseDirectoryAbsolutePath, isCloneMode, isConfirming, isCreatingFolderSubmitting, isOpeningFinder, newFolderName, openProjectDraft, t]);
+
   const finalizeSelection = React.useCallback(async (target: string) => {
     if (!target || isConfirming) return;
     const normalized = normalizeDirectoryPath(target);
@@ -488,7 +561,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   }, [browseToDisplayPath, browseToEntry]);
 
   const handleOpenInFinder = React.useCallback(async () => {
-    if (!canRequestAccess || isOpeningFinder) return;
+    if (!canRequestAccess || isOpeningFinder || isCreatingFolderSubmitting) return;
     setIsOpeningFinder(true);
     try {
       const result = await requestAccess(targetPath);
@@ -517,7 +590,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     } finally {
       setIsOpeningFinder(false);
     }
-  }, [canRequestAccess, finalizeSelection, isOpeningFinder, requestAccess, startAccessing, t, targetPath]);
+  }, [canRequestAccess, finalizeSelection, isCreatingFolderSubmitting, isOpeningFinder, requestAccess, startAccessing, t, targetPath]);
 
   const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
@@ -618,9 +691,62 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   const resultsSection = (
     <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-border/60 bg-[var(--surface-elevated)] shadow-sm">
       <div className="max-h-[min(28rem,58vh)] overflow-y-auto p-2">
-        <div className="px-2 pb-1 pt-0.5 typography-meta font-medium uppercase tracking-wide text-muted-foreground/80">
-          {t('directoryExplorerDialog.browse.directories')}
+        <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-0.5">
+          <div className="typography-meta font-medium uppercase tracking-wide text-muted-foreground/80">
+            {t('directoryExplorerDialog.browse.directories')}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            className="h-7 gap-1 px-2 typography-meta"
+            onClick={handleOpenCreateFolder}
+            disabled={isConfirming || isOpeningFinder || isCloneMode || isCreatingFolderSubmitting}
+            title={t('directoryTree.actions.createNewDirectory')}
+          >
+            <Icon name="folder-add" className="size-3.5" />
+            {t('directoryTree.actions.createNewDirectory')}
+          </Button>
         </div>
+        {isCreatingFolder ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateFolder();
+            }}
+            className="mb-2 flex items-center gap-2 px-2"
+          >
+            <Input
+              ref={newFolderInputRef}
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              placeholder={t('directoryTree.field.newDirectoryPlaceholder')}
+              aria-label={t('directoryTree.actions.createNewDirectory')}
+              className="min-w-0 flex-1 bg-[var(--surface-background)] font-mono typography-ui-label"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={isCreatingFolderSubmitting}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={handleCancelCreateFolder}
+              disabled={isCreatingFolderSubmitting}
+            >
+              {t('directoryTree.actions.cancel')}
+            </Button>
+            <Button
+              type="submit"
+              size="xs"
+              disabled={isCreatingFolderSubmitting || !newFolderName.trim()}
+            >
+              {isCreatingFolderSubmitting
+                ? t('directoryExplorerDialog.actions.adding')
+                : t('directoryTree.actions.createDirectory')}
+            </Button>
+          </form>
+        ) : null}
         {isLoading ? (
           <div className="py-10 text-center typography-ui-label text-muted-foreground">
             {t('directoryExplorerDialog.browse.loading')}
@@ -736,11 +862,11 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
       {!isMobile ? footerHints : null}
       <div className={cn('flex w-full flex-row justify-end gap-2 sm:w-auto', isMobile && 'justify-stretch')}>
         {canRequestAccess ? (
-          <Button variant="ghost" size="xs" onClick={handleOpenInFinder} disabled={isConfirming || isOpeningFinder || isCloneMode}>
+          <Button variant="ghost" size="xs" onClick={handleOpenInFinder} disabled={isConfirming || isOpeningFinder || isCreatingFolderSubmitting || isCloneMode}>
             {isOpeningFinder ? t('directoryExplorerDialog.actions.openingFinder') : t('directoryExplorerDialog.actions.openInFinder')}
           </Button>
         ) : null}
-        <Button variant="ghost" size="xs" onClick={() => setIsCloneMode((value) => !value)} disabled={isConfirming || isOpeningFinder} className={cn(isMobile && 'flex-1')}>
+        <Button variant="ghost" size="xs" onClick={() => setIsCloneMode((value) => !value)} disabled={isConfirming || isOpeningFinder || isCreatingFolderSubmitting} className={cn(isMobile && 'flex-1')}>
           {isCloneMode ? t('directoryExplorerDialog.actions.addLocalProject') : t('directoryExplorerDialog.actions.cloneRepository')}
         </Button>
         {isMobile ? (

@@ -7,6 +7,7 @@ import { ConfigUpdateOverlay } from '@/components/ui/ConfigUpdateOverlay';
 import { Button } from '@/components/ui/button';
 import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
 import { ChatView } from '@/components/views/ChatView';
+import { TerminalDock } from '@/components/terminal/TerminalDock';
 import { PlanView } from '@/components/views/PlanView';
 import { SettingsView } from '@/components/views/SettingsView';
 import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
@@ -30,6 +31,7 @@ import { getRuntimeApiBaseUrl, getRuntimeKey, subscribeRuntimeEndpointChanged, s
 import { refreshGlobalSessions, resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { clearLastActiveSession, readLastActiveSession } from '@/sync/last-session-cache';
 import { cn } from '@/lib/utils';
+import { isTabletTerminalDockOpen } from '@/components/terminal/terminalDockState';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useFeatureFlagsStore } from '@/stores/useFeatureFlagsStore';
@@ -192,8 +194,11 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
   // side is barely wider than a tablet's short one — it stays the full-cover
   // drawer, which is the layout that actually works at that width.
   const workspaceAsPanel = roomyForPanels;
-  const workspacePanelWidth = workspaceAsPanel && workspaceOpen ? rightResize.width : 0;
+  const terminalDockOpen = isTabletTerminalDockOpen(workspaceAsPanel, workspaceOpen, workspaceTab);
+  const workspacePanelWidth = workspaceAsPanel && workspaceOpen && !terminalDockOpen ? rightResize.width : 0;
   const sidebarWidth = isTabletLayout && sidebarOpen ? leftResize.width : 0;
+  const terminalDockHeight = useUIStore((state) => state.terminalDockHeight);
+  const setTerminalDockHeight = useUIStore((state) => state.setTerminalDockHeight);
 
   // Publish the chat column's insets so overlays portaled to <body> (model
   // picker, directory picker, every MobileOverlayPanel) can center on the CHAT
@@ -443,13 +448,22 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             onOpenWorkspace={() => setWorkspaceOpen(true)}
             compactTitle={isTabletLayout}
           />
-          <main ref={chatMainRef} className="relative min-h-0 flex-1 overflow-hidden" data-page-scroll-lock="true">
-            <div className="h-full w-full">
-              <ErrorBoundary>
-                <ChatView />
-              </ErrorBoundary>
-            </div>
-          </main>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <main ref={chatMainRef} className="relative min-h-0 flex-1 overflow-hidden" data-page-scroll-lock="true">
+              <div className="h-full w-full">
+                <ErrorBoundary>
+                  <ChatView />
+                </ErrorBoundary>
+              </div>
+            </main>
+            {terminalDockOpen ? (
+              <TerminalDock
+                height={terminalDockHeight}
+                onHeightChange={setTerminalDockHeight}
+                onClose={closeWorkspace}
+              />
+            ) : null}
+          </div>
         </div>
 
         {/* Mounted permanently on phones (parked off-screen while closed) so
@@ -463,10 +477,10 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
           />
         ) : null}
 
-        {/* Tablet: the workspace lives inside an animated aside so landscape
-            gets a real sidebar. The drawer element keeps its position in the
-            tree across rotation — only its `variant` changes — so the mounted
-            panes (open diff, edited file, attached terminal) survive it. In
+        {/* Tablet: non-terminal workspace surfaces live inside an animated aside
+            so landscape gets a real sidebar. The drawer element keeps its
+            position in the tree across rotation — only its `variant` changes —
+            while the terminal moves to the bottom dock in landscape. In
             portrait the drawer portals itself out and this aside stays at 0. */}
         {isTabletLayout ? (
           <aside
@@ -499,13 +513,14 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             >
               <ErrorBoundary>
                 <MobileWorkspaceDrawer
-                  open={workspaceOpen}
+                  open={workspaceOpen && !terminalDockOpen}
                   onClose={closeWorkspace}
                   tab={workspaceTab}
                   onTabChange={setWorkspaceTab}
                   pendingChangesDiff={pendingChangesDiff}
                   onOpenPlan={setOpenPlan}
                   onOpenMcpSettings={openMcpCreateSettings}
+                  terminalDocked={terminalDockOpen}
                   variant={workspaceAsPanel ? 'panel' : 'drawer'}
                 />
               </ErrorBoundary>

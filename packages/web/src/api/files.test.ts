@@ -125,6 +125,117 @@ describe('createWebFilesAPI', () => {
     });
   });
 
+  it('forwards server scope for directory listing', async () => {
+    const { createWebFilesAPI } = await import('./files');
+    const api = createWebFilesAPI({ urls, getDirectory: () => '/workspace' });
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({
+      path: '/srv/projects',
+      entries: [{ name: 'app', path: '/srv/projects/app', isDirectory: true }],
+    }));
+
+    await api.listDirectory('/srv/projects', { scope: 'server' });
+
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/list', {
+      query: new URLSearchParams({ path: '/srv/projects', scope: 'server' }),
+      headers: { 'x-opencode-directory': '/workspace' },
+    });
+  });
+
+  it('forwards server scope for binary uploads without enabling overwrite', async () => {
+    const { createWebFilesAPI } = await import('./files');
+    const api = createWebFilesAPI({ urls, getDirectory: () => '/workspace' });
+    const file = new Blob([new Uint8Array([0, 1, 255])]);
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true, path: '/srv/app/image.bin' }));
+
+    await api.uploadFile?.('/srv/app/image.bin', file, {
+      directory: '/srv/app',
+      scope: 'server',
+    });
+
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/upload', {
+      method: 'POST',
+      query: { path: '/srv/app/image.bin', overwrite: undefined, scope: 'server' },
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'x-opencode-directory': '/srv/app',
+      },
+      body: file,
+    });
+  });
+
+  it('forwards server scope for external file operations', async () => {
+    const { createWebFilesAPI } = await import('./files');
+    const api = createWebFilesAPI({ getDirectory: () => '/workspace' });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ path: '/outside/file.txt', isFile: true, size: 4 }));
+    await api.statFile?.('/outside/file.txt', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/stat', {
+      query: new URLSearchParams({ path: '/outside/file.txt', scope: 'server' }),
+      headers: { 'x-opencode-directory': '/workspace' },
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(new Response('text'));
+    await api.readFile?.('/outside/file.txt', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/read', {
+      query: new URLSearchParams({ path: '/outside/file.txt', scope: 'server' }),
+      cache: 'default',
+      headers: { 'x-opencode-directory': '/workspace' },
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true, path: '/outside/new-dir' }));
+    await api.createDirectory?.('/outside/new-dir', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-opencode-directory': '/workspace' },
+      body: JSON.stringify({ path: '/outside/new-dir', scope: 'server' }),
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true, path: '/outside/file.txt' }));
+    await api.writeFile?.('/outside/file.txt', 'updated', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-opencode-directory': '/workspace' },
+      body: JSON.stringify({ path: '/outside/file.txt', content: 'updated', scope: 'server' }),
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true }));
+    await api.delete?.('/outside/file.txt', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-opencode-directory': '/workspace' },
+      body: JSON.stringify({ path: '/outside/file.txt', scope: 'server' }),
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true, path: '/outside/renamed.txt' }));
+    await api.rename?.('/outside/file.txt', '/outside/renamed.txt', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-opencode-directory': '/workspace' },
+      body: JSON.stringify({ oldPath: '/outside/file.txt', newPath: '/outside/renamed.txt', scope: 'server' }),
+    });
+
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({ success: true }));
+    await api.revealPath?.('/outside/renamed.txt', { scope: 'server', directory: '/workspace' });
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-opencode-directory': '/workspace' },
+      body: JSON.stringify({ path: '/outside/renamed.txt', scope: 'server' }),
+    });
+  });
+
+  it('forwards server scope for external file downloads', async () => {
+    const { createWebFilesAPI } = await import('./files');
+    const api = createWebFilesAPI({ getDirectory: () => '/workspace' });
+
+    runtimeFetchMock.mockResolvedValueOnce(new Response('', { status: 500 }));
+    await expect(api.downloadFile?.('/outside/file.txt', { scope: 'server', directory: '/workspace' })).rejects.toThrow('Download failed');
+
+    expect(runtimeFetchMock).toHaveBeenLastCalledWith('/api/fs/raw', {
+      query: { path: '/outside/file.txt', download: true, scope: 'server' },
+      headers: { 'x-opencode-directory': '/workspace' },
+    });
+  });
+
   it('opens the native share sheet for downloads in the Capacitor app', async () => {
     const { createWebFilesAPI } = await import('./files');
     const api = createWebFilesAPI({ urls, getDirectory: () => '/workspace' });

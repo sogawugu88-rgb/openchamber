@@ -436,7 +436,7 @@ const truncateTabLabel = (value: string, maxChars: number): string => {
 };
 
 
-export const ContextPanel: React.FC = () => {
+export const ContextPanel: React.FC<{ terminalDocked?: boolean }> = ({ terminalDocked = false }) => {
   const { t } = useI18n();
   const effectiveDirectory = useEffectiveDirectory() ?? '';
   const directoryKey = React.useMemo(() => normalizeDirectoryKey(effectiveDirectory), [effectiveDirectory]);
@@ -472,6 +472,7 @@ export const ContextPanel: React.FC = () => {
   const tabs = React.useMemo(() => panelState?.tabs ?? [], [panelState?.tabs]);
   const activeTab = tabs.find((tab) => tab.id === panelState?.activeTabId) ?? tabs[tabs.length - 1] ?? null;
   const isOpen = Boolean(panelState?.isOpen && activeTab);
+  const isTerminalDocked = Boolean(terminalDocked && isOpen && activeTab?.mode === 'terminal');
   const isExpanded = Boolean(isOpen && panelState?.expanded);
   const [availablePanelAreaWidth, setAvailablePanelAreaWidth] = React.useState<number | null>(null);
   const activeModeForWidth = activeTab?.mode ?? null;
@@ -972,6 +973,8 @@ export const ContextPanel: React.FC = () => {
     () => tabs.some((tab) => tab.mode === 'file' && tab.targetPath),
     [tabs],
   );
+
+  if (isTerminalDocked) return null;
 
   const isFileTabActive = activeTab?.mode === 'file';
 

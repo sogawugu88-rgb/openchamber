@@ -216,6 +216,23 @@ const resolveWorkspacePath = ({ targetPath, baseDirectory, path, os, normalizeDi
   return { ok: false, error: 'Path is outside of active workspace' };
 };
 
+const parseFileSystemScope = (value) => {
+  if (value === undefined) return 'workspace';
+  if (value === 'workspace' || value === 'server') return value;
+  return null;
+};
+
+const resolveServerPath = ({ targetPath, path, normalizeDirectoryPath }) => {
+  const normalized = normalizeDirectoryPath(targetPath);
+  if (!normalized || typeof normalized !== 'string') {
+    return { ok: false, error: 'Path is required' };
+  }
+  if (!path.isAbsolute(normalized)) {
+    return { ok: false, error: 'Server filesystem paths must be absolute' };
+  }
+  return { ok: true, base: null, resolved: path.resolve(normalized), serverScope: true };
+};
+
 const resolveWorkspacePathFromWorktrees = async ({ targetPath, baseDirectory, path, os, normalizeDirectoryPath }) => {
   const normalized = normalizeDirectoryPath(targetPath);
   if (!normalized || typeof normalized !== 'string') {
@@ -276,6 +293,37 @@ const resolveWorkspacePathFromContext = async ({ req, targetPath, resolveProject
   });
 };
 
+const resolveFileSystemPathFromContext = async ({
+  req,
+  targetPath,
+  scope: requestedScope,
+  allowOutsideWorkspace,
+  resolveProjectDirectory,
+  path,
+  os,
+  normalizeDirectoryPath,
+  openchamberUserConfigRoot,
+}) => {
+  const scope = parseFileSystemScope(requestedScope);
+  if (!scope) {
+    return { ok: false, error: 'Invalid filesystem scope' };
+  }
+
+  if (scope === 'server' || allowOutsideWorkspace === true) {
+    return resolveServerPath({ targetPath, path, normalizeDirectoryPath });
+  }
+
+  return resolveWorkspacePathFromContext({
+    req,
+    targetPath,
+    resolveProjectDirectory,
+    path,
+    os,
+    normalizeDirectoryPath,
+    openchamberUserConfigRoot,
+  });
+};
+
 const deriveCloneDirectoryName = (remoteUrl) => {
   const remote = typeof remoteUrl === 'string' ? remoteUrl.trim() : '';
   if (!remote) return '';
@@ -319,18 +367,26 @@ const escapeCloneSshKeyPath = (sshKeyPath) => {
 };
 
 const resolveReadPathFromContext = async ({ req, targetPath, scope, resolveProjectDirectory, path, os, fsPromises, normalizeDirectoryPath, openchamberUserConfigRoot }) => {
-  if (req.query?.allowOutsideWorkspace === 'true') {
+  const requestedScope = parseFileSystemScope(req.query?.scope);
+  if (req.query?.scope !== undefined && !requestedScope) {
+    return { ok: false, error: 'Invalid filesystem scope' };
+  }
+
+  if (requestedScope === 'server' || req.query?.allowOutsideWorkspace === 'true') {
+    if (typeof req.query?.outsideFileGrant === 'string' && req.query.outsideFileGrant.trim()) {
+      return resolveOutsideFileGrant({
+        token: req.query.outsideFileGrant,
+        targetPath: path.resolve(normalizeDirectoryPath(targetPath)),
+        scope,
+        fsPromises,
+      });
+    }
+
     const normalized = normalizeDirectoryPath(targetPath);
     if (!normalized || typeof normalized !== 'string') {
       return { ok: false, error: 'Path is required' };
     }
-    const resolved = path.resolve(normalized);
-    return resolveOutsideFileGrant({
-      token: req.query?.outsideFileGrant,
-      targetPath: resolved,
-      scope,
-      fsPromises,
-    });
+    return resolveServerPath({ targetPath: normalized, path, normalizeDirectoryPath });
   }
 
   return resolveWorkspacePathFromContext({
@@ -614,33 +670,28 @@ export const registerFsRoutes = (app, dependencies) => {
 
   app.post('/api/fs/mkdir', async (req, res) => {
     try {
-      const { path: dirPath, allowOutsideWorkspace } = req.body ?? {};
+      const { path: dirPath, allowOutsideWorkspace, scope: requestedScope } = req.body ?? {};
       if (typeof dirPath !== 'string' || !dirPath.trim()) {
         return res.status(400).json({ error: 'Path is required' });
       }
 
-      let resolvedPath = '';
-      if (allowOutsideWorkspace) {
-        console.warn('Rejected outside-workspace mkdir without trusted directory grant');
-        return res.status(403).json({ error: 'Outside workspace directory creation requires a grant' });
-      } else {
-        const resolved = await resolveWorkspacePathFromContext({
-          req,
-          targetPath: dirPath,
-          resolveProjectDirectory,
-          path,
-          os,
-          normalizeDirectoryPath,
-          openchamberUserConfigRoot,
-        });
-        if (!resolved.ok) {
-          return res.status(400).json({ error: resolved.error });
-        }
-        resolvedPath = resolved.resolved;
+      const resolved = await resolveFileSystemPathFromContext({
+        req,
+        targetPath: dirPath,
+        scope: requestedScope,
+        allowOutsideWorkspace,
+        resolveProjectDirectory,
+        path,
+        os,
+        normalizeDirectoryPath,
+        openchamberUserConfigRoot,
+      });
+      if (!resolved.ok) {
+        return res.status(400).json({ error: resolved.error });
       }
 
-      await fsPromises.mkdir(resolvedPath, { recursive: true });
-      return res.json({ success: true, path: resolvedPath });
+      await fsPromises.mkdir(resolved.resolved, { recursive: true });
+      return res.json({ success: true, path: resolved.resolved });
     } catch (error) {
       if (isOsPermissionError(error)) {
         return sendOsPermissionDenied(res, 'Access denied');
@@ -959,10 +1010,6 @@ export const registerFsRoutes = (app, dependencies) => {
     }
 
     try {
-      if (req.query?.allowOutsideWorkspace === 'true') {
-        return res.status(403).json({ error: 'allowOutsideWorkspace is not permitted for this endpoint' });
-      }
-
       const filePath = path.resolve('/', rawPath);
       const resolved = await resolveReadPathFromContext({
         req,
@@ -992,6 +1039,9 @@ export const registerFsRoutes = (app, dependencies) => {
       const content = await fsPromises.readFile(canonicalPath);
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (resolved.granted) {
+        res.setHeader('Referrer-Policy', 'no-referrer');
+      }
       return res.type(mimeType).send(content);
     } catch (error) {
       const err = error;
@@ -1007,7 +1057,7 @@ export const registerFsRoutes = (app, dependencies) => {
   });
 
   app.post('/api/fs/write', async (req, res) => {
-    const { path: filePath, content } = req.body || {};
+    const { path: filePath, content, scope: requestedScope, allowOutsideWorkspace } = req.body || {};
     if (!filePath || typeof filePath !== 'string') {
       return res.status(400).json({ error: 'Path is required' });
     }
@@ -1016,9 +1066,11 @@ export const registerFsRoutes = (app, dependencies) => {
     }
 
     try {
-      const resolved = await resolveWorkspacePathFromContext({
+      const resolved = await resolveFileSystemPathFromContext({
         req,
         targetPath: filePath,
+        scope: requestedScope,
+        allowOutsideWorkspace,
         resolveProjectDirectory,
         path,
         os,
@@ -1035,8 +1087,10 @@ export const registerFsRoutes = (app, dependencies) => {
         }
         throw error;
       });
-      const canonicalBase = await fsPromises.realpath(resolved.base).catch(() => path.resolve(resolved.base));
-      if (!isPathWithinRoot(writePath, canonicalBase, path, os)) {
+      const canonicalBase = resolved.serverScope
+        ? null
+        : await fsPromises.realpath(resolved.base).catch(() => path.resolve(resolved.base));
+      if (!resolved.serverScope && !isPathWithinRoot(writePath, canonicalBase, path, os)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -1071,6 +1125,10 @@ export const registerFsRoutes = (app, dependencies) => {
   app.post('/api/fs/upload', async (req, res) => {
     const filePath = typeof req.query?.path === 'string' ? req.query.path.trim() : '';
     const overwrite = req.query?.overwrite === 'true';
+    const scope = parseFileSystemScope(req.query?.scope);
+    if (!scope) {
+      return res.status(400).json({ error: 'Invalid filesystem scope' });
+    }
     if (!filePath) {
       return res.status(400).json({ error: 'Path is required' });
     }
@@ -1086,23 +1144,27 @@ export const registerFsRoutes = (app, dependencies) => {
     }
 
     try {
-      const resolved = await resolveWorkspacePathFromContext({
-        req,
-        targetPath: filePath,
-        resolveProjectDirectory,
-        path,
-        os,
-        normalizeDirectoryPath,
-        openchamberUserConfigRoot,
-      });
+      const resolved = scope === 'server'
+        ? resolveServerPath({ targetPath: filePath, path, normalizeDirectoryPath })
+        : await resolveWorkspacePathFromContext({
+            req,
+            targetPath: filePath,
+            resolveProjectDirectory,
+            path,
+            os,
+            normalizeDirectoryPath,
+            openchamberUserConfigRoot,
+          });
       if (!resolved.ok) {
         return res.status(400).json({ error: resolved.error });
       }
 
-      const canonicalBase = await fsPromises.realpath(resolved.base).catch(() => path.resolve(resolved.base));
+      const canonicalBase = resolved.serverScope
+        ? null
+        : await fsPromises.realpath(resolved.base).catch(() => path.resolve(resolved.base));
       const requestedParent = path.dirname(resolved.resolved);
       const canonicalParent = await fsPromises.realpath(requestedParent);
-      if (!isPathWithinRoot(canonicalParent, canonicalBase, path, os)) {
+      if (!resolved.serverScope && !isPathWithinRoot(canonicalParent, canonicalBase, path, os)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -1113,7 +1175,7 @@ export const registerFsRoutes = (app, dependencies) => {
         throw error;
       });
       const writePath = existingPath || path.join(canonicalParent, path.basename(resolved.resolved));
-      if (!isPathWithinRoot(writePath, canonicalBase, path, os)) {
+      if (!resolved.serverScope && !isPathWithinRoot(writePath, canonicalBase, path, os)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -1187,15 +1249,17 @@ export const registerFsRoutes = (app, dependencies) => {
   });
 
   app.post('/api/fs/delete', async (req, res) => {
-    const { path: targetPath } = req.body || {};
+    const { path: targetPath, scope: requestedScope, allowOutsideWorkspace } = req.body || {};
     if (!targetPath || typeof targetPath !== 'string') {
       return res.status(400).json({ error: 'Path is required' });
     }
 
     try {
-      const resolved = await resolveWorkspacePathFromContext({
+      const resolved = await resolveFileSystemPathFromContext({
         req,
         targetPath,
+        scope: requestedScope,
+        allowOutsideWorkspace,
         resolveProjectDirectory,
         path,
         os,
@@ -1222,7 +1286,7 @@ export const registerFsRoutes = (app, dependencies) => {
   });
 
   app.post('/api/fs/rename', async (req, res) => {
-    const { oldPath, newPath } = req.body || {};
+    const { oldPath, newPath, scope: requestedScope, allowOutsideWorkspace } = req.body || {};
     if (!oldPath || typeof oldPath !== 'string') {
       return res.status(400).json({ error: 'oldPath is required' });
     }
@@ -1231,9 +1295,16 @@ export const registerFsRoutes = (app, dependencies) => {
     }
 
     try {
-      const resolvedOld = await resolveWorkspacePathFromContext({
+      const scope = parseFileSystemScope(requestedScope);
+      if (!scope) {
+        return res.status(400).json({ error: 'Invalid filesystem scope' });
+      }
+
+      const resolvedOld = await resolveFileSystemPathFromContext({
         req,
         targetPath: oldPath,
+        scope,
+        allowOutsideWorkspace,
         resolveProjectDirectory,
         path,
         os,
@@ -1244,9 +1315,11 @@ export const registerFsRoutes = (app, dependencies) => {
         return res.status(400).json({ error: resolvedOld.error });
       }
 
-      const resolvedNew = await resolveWorkspacePathFromContext({
+      const resolvedNew = await resolveFileSystemPathFromContext({
         req,
         targetPath: newPath,
+        scope,
+        allowOutsideWorkspace,
         resolveProjectDirectory,
         path,
         os,
@@ -1257,7 +1330,7 @@ export const registerFsRoutes = (app, dependencies) => {
         return res.status(400).json({ error: resolvedNew.error });
       }
 
-      if (resolvedOld.base !== resolvedNew.base) {
+      if (!resolvedOld.serverScope && !resolvedNew.serverScope && resolvedOld.base !== resolvedNew.base) {
         return res.status(400).json({ error: 'Source and destination must share the same workspace root' });
       }
 
@@ -1450,6 +1523,14 @@ export const registerFsRoutes = (app, dependencies) => {
       ? req.query.path.trim()
       : os.homedir();
     const respectGitignore = req.query.respectGitignore === 'true';
+    const scope = parseFileSystemScope(req.query?.scope);
+    if (!scope) {
+      return res.status(400).json({ error: 'Invalid filesystem scope' });
+    }
+    const normalizedRawPath = normalizeDirectoryPath(rawPath);
+    if (scope === 'server' && (!normalizedRawPath || !path.isAbsolute(normalizedRawPath))) {
+      return res.status(400).json({ error: 'Server filesystem paths must be absolute' });
+    }
     // Logical (requested) path stays in the caller's path space. Realpath is
     // only used to read directory contents — returning real paths for entries
     // breaks file-tree expansion when listing through a symlink, because the

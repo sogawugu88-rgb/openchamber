@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import type { SidebarSection } from '@/constants/sidebar';
+import { clampTerminalDockHeight, TERMINAL_DOCK_DEFAULT_HEIGHT } from '@/components/terminal/terminalDockState';
 import { createDeferredSafeJSONStorage } from './utils/safeStorage';
 import { SEMANTIC_TYPOGRAPHY, getTypographyVariable, type SemanticTypographyKey } from '@/lib/typography';
 import type { ShortcutCombo } from '@/lib/shortcuts';
@@ -711,6 +712,7 @@ interface UIStore {
   globalDraftStarters: DraftStarterRef[] | null;
   draftStartersVisible: boolean;
   terminalFontSize: number;
+  terminalDockHeight: number;
   terminalShell: TerminalShell;
   terminalLoginShells: TerminalShell[];
   editorFontSize: number;
@@ -898,6 +900,7 @@ interface UIStore {
   setGlobalDraftStarters: (refs: DraftStarterRef[]) => void;
   setDraftStartersVisible: (value: boolean) => void;
   setTerminalFontSize: (size: number) => void;
+  setTerminalDockHeight: (height: number) => void;
   setTerminalShell: (shell: TerminalShell) => void;
   setTerminalLoginShells: (shells: TerminalShell[]) => void;
   setEditorFontSize: (size: number) => void;
@@ -1070,6 +1073,7 @@ export const useUIStore = create<UIStore>()(
         fontSize: 100,
         globalDraftStarters: null,
         terminalFontSize: 14,
+        terminalDockHeight: TERMINAL_DOCK_DEFAULT_HEIGHT,
         terminalShell: 'auto',
         terminalLoginShells: [],
         editorFontSize: 13,
@@ -1891,6 +1895,10 @@ export const useUIStore = create<UIStore>()(
           set({ terminalFontSize: clamped });
         },
 
+        setTerminalDockHeight: (height) => {
+          set({ terminalDockHeight: clampTerminalDockHeight(height) });
+        },
+
         setTerminalShell: (shell) => {
           set({ terminalShell: shell });
         },
@@ -2453,12 +2461,18 @@ export const useUIStore = create<UIStore>()(
       {
         name: 'ui-store',
         storage: createDeferredSafeJSONStorage(),
-        version: 18,
+        version: 19,
         migrate: (persistedState, version) => {
           if (!persistedState || typeof persistedState !== 'object') {
             return persistedState;
           }
           const state = persistedState as Record<string, unknown>;
+
+          if (version < 19) {
+            state.terminalDockHeight = typeof state.terminalDockHeight === 'number'
+              ? clampTerminalDockHeight(state.terminalDockHeight)
+              : TERMINAL_DOCK_DEFAULT_HEIGHT;
+          }
 
           // v15 -> v16: the main-area surface concept is gone from persistence
           // (the chat always owns the desktop main area; panel surfaces have
@@ -2701,6 +2715,7 @@ export const useUIStore = create<UIStore>()(
           // Note: isSettingsDialogOpen intentionally NOT persisted
            showReasoningTraces: state.showReasoningTraces,
            showSessionTokenDetails: state.showSessionTokenDetails,
+           terminalDockHeight: state.terminalDockHeight,
            streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
           sessionRecapEnabled: state.sessionRecapEnabled,
           sessionSuggestionEnabled: state.sessionSuggestionEnabled,

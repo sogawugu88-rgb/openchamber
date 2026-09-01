@@ -855,23 +855,35 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   }, [openPaths, root, selectedPath, setSelectedPath]);
 
   const selectedFileIsOutsideWorkspace = Boolean(root && selectedFilePath && !isPathWithinRoot(selectedFilePath, root));
+  const selectedFileOperationOptions = React.useMemo(
+    () => ({
+      scope: selectedFileIsOutsideWorkspace && isBrowserClient ? 'server' as const : undefined,
+      directory: root || undefined,
+    }),
+    [isBrowserClient, root, selectedFileIsOutsideWorkspace],
+  );
   const selectedOutsideFileGrant = selectedFileIsOutsideWorkspace ? getOutsideFileGrant(selectedFilePath) : undefined;
   const selectedFileReadOptions = React.useMemo(
     () => ({
-      allowOutsideWorkspace: mode === 'editor-only' && selectedFileIsOutsideWorkspace,
+      ...selectedFileOperationOptions,
+      allowOutsideWorkspace: selectedFileIsOutsideWorkspace && (isBrowserClient || mode === 'editor-only'),
       outsideFileGrant: selectedOutsideFileGrant,
-      directory: root || undefined,
     }),
-    [mode, selectedFileIsOutsideWorkspace, selectedOutsideFileGrant, root],
+    [isBrowserClient, mode, selectedFileIsOutsideWorkspace, selectedFileOperationOptions, selectedOutsideFileGrant],
   );
   const resolveFileReadOptions = React.useCallback(async (path: string) => {
     const previousGrant = getOutsideFileGrant(path);
-    const readOptions = await resolveOutsideFileReadOptions(path, root, mode === 'editor-only');
+    const readOptions = await resolveOutsideFileReadOptions(path, root, isBrowserClient || mode === 'editor-only');
     if (readOptions.outsideFileGrant && readOptions.outsideFileGrant !== previousGrant) {
       setOutsideFileGrantRevision((revision) => revision + 1);
     }
-    return readOptions;
-  }, [mode, root]);
+    const outsideWorkspace = Boolean(root && !isPathWithinRoot(path, root));
+    return {
+      ...readOptions,
+      scope: outsideWorkspace && isBrowserClient ? 'server' as const : undefined,
+      directory: root || undefined,
+    };
+  }, [isBrowserClient, mode, root]);
 
   // Editor tabs horizontal scroll fades
   const editorTabsScrollRef = React.useRef<HTMLDivElement>(null);
@@ -1664,7 +1676,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
 
     try {
       const contentToWrite = serializeEditorContent(draftContent, loadedFileLineEnding);
-      const result = await files.writeFile(selectedFile.path, contentToWrite);
+      const result = await files.writeFile(selectedFile.path, contentToWrite, selectedFileOperationOptions);
       if (!result?.success) {
         toast.error(t('filesView.toast.writeFileFailed'));
         return false;
@@ -1705,7 +1717,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
     } finally {
       setIsSaving(false);
     }
-  }, [contentDetectedBinary, draftContent, fileContent, fileLoading, files, isDirty, loadedFileLineEnding, loadedFilePath, readFileStat, root, selectedFile, t]);
+  }, [contentDetectedBinary, draftContent, fileContent, fileLoading, files, isDirty, loadedFileLineEnding, loadedFilePath, readFileStat, root, selectedFile, selectedFileOperationOptions, t]);
 
   React.useEffect(() => {
     if (autoSaveEnabled) {
@@ -2365,7 +2377,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
   const canCopyPath = Boolean(selectedFile && displaySelectedPath.length > 0);
   // Keep image/SVG on the preview path: `isBinaryFile` excludes `.svg`, so binary
   // alone would flip canEdit/isTextFile true and show a dead edit toggle + no-op Save.
-  const canEdit = Boolean(selectedFile && !selectedFileIsOutsideWorkspace && !isSelectedBinary && !isSelectedImage && files.writeFile && fileContent.length <= MAX_VIEW_CHARS);
+  const canEdit = Boolean(selectedFile && (!selectedFileIsOutsideWorkspace || isBrowserClient) && !isSelectedBinary && !isSelectedImage && files.writeFile && fileContent.length <= MAX_VIEW_CHARS);
   const isMarkdown = Boolean(selectedFile?.path && isMarkdownFile(selectedFile.path));
   const isJson = Boolean(selectedFile?.path && isJsonFile(selectedFile.path));
   const isHtml = Boolean(selectedFile?.path && isHtmlFile(selectedFile.path));
@@ -2544,7 +2556,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       return false;
     }
 
-    const result = await files.writeFile(path, xml);
+    const result = await files.writeFile(path, xml, selectedFileOperationOptions);
     if (!result?.success) {
       toast.error(t('filesView.toast.writeFileFailed'));
       return false;
@@ -2558,7 +2570,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
       lastLoadedFileStatRef.current = stat;
     }
     return true;
-  }, [files, readFileStat, t]);
+  }, [files, readFileStat, selectedFileOperationOptions, t]);
 
   React.useEffect(() => {
     return () => {
@@ -2966,7 +2978,9 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
 
   const pdfAssetAuthKey = selectedFile?.path
     && isSelectedPdf
-    && (!selectedFileReadOptions.allowOutsideWorkspace || selectedFileReadOptions.outsideFileGrant)
+    && (!selectedFileReadOptions.allowOutsideWorkspace
+      || selectedFileReadOptions.outsideFileGrant
+      || selectedFileReadOptions.scope === 'server')
     ? `${selectedFile.path}|${selectedFileReadOptions.allowOutsideWorkspace ? 'outside' : 'workspace'}|${selectedFileReadOptions.outsideFileGrant ?? ''}|${fileContentRevision}`
     : '';
 
@@ -3520,7 +3534,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
               size="sm"
               onClick={() => {
                 const fn = files.downloadFile;
-                if (fn) void fn(selectedFile.path).catch((error) => {
+                if (fn) void fn(selectedFile.path, selectedFileReadOptions).catch((error) => {
                   console.error('Download failed:', error);
                   toast.error(t('sidebarFilesTree.toast.operationFailed'));
                 });
@@ -3802,7 +3816,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                   onClick={() => {
                     const fn = files.downloadFile;
                     if (!fn || !selectedFile) return;
-                    void fn(selectedFile.path).catch((error) => {
+                    void fn(selectedFile.path, selectedFileReadOptions).catch((error) => {
                       console.error('Download failed:', error);
                       toast.error(t('sidebarFilesTree.toast.operationFailed'));
                     });
@@ -3882,7 +3896,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                 key={htmlPreviewNonce}
                 src={!runtime.isVSCode && htmlAssetAuthReadyKey === htmlAssetAuthKey ? (() => {
                   const encoded = selectedFile.path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-                  return getRuntimeUrlResolver().authenticatedAsset(`/api/fs/serve${encoded.startsWith('/') ? encoded : `/${encoded}`}`);
+                  const servePath = `/api/fs/serve${encoded.startsWith('/') ? encoded : `/${encoded}`}`;
+                  return getRuntimeUrlResolver().authenticatedAsset(
+                    selectedFileReadOptions.allowOutsideWorkspace ? `${servePath}?allowOutsideWorkspace=true` : servePath,
+                  );
                 })() : undefined}
                 srcDoc={runtime.isVSCode ? (() => {
                   const basePath = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/') + 1);
@@ -4201,7 +4218,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full' }) => {
                   onClick={() => {
                     const fn = files.downloadFile;
                     if (!fn || !selectedFile) return;
-                    void fn(selectedFile.path).catch((error) => {
+                    void fn(selectedFile.path, selectedFileReadOptions).catch((error) => {
                       console.error('Download failed:', error);
                       toast.error(t('sidebarFilesTree.toast.operationFailed'));
                     });

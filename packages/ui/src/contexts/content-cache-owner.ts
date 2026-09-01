@@ -21,7 +21,7 @@ export function createContentCachedFiles(files: FilesAPI): { files: FilesAPI; di
   let mutationBarrier = Promise.resolve();
 
   const cacheKey = (path: string, options?: Parameters<NonNullable<FilesAPI['readFile']>>[1]) =>
-    JSON.stringify([options?.directory ?? '', path]);
+    JSON.stringify([options?.directory ?? '', options?.scope ?? '', path]);
   const contentBytes = (content: string) => new TextEncoder().encode(content).byteLength;
   const removeEntry = (key: string) => {
     const entry = cache.get(key);
@@ -122,9 +122,9 @@ export function createContentCachedFiles(files: FilesAPI): { files: FilesAPI; di
   const cachedFiles: FilesAPI = {
     ...files,
     readFile: cachedReadFile,
-    writeFile: files.writeFile ? (path, content) => mutate([path], () => files.writeFile!(path, content)) : undefined,
-    delete: files.delete ? (path) => mutate([path], () => files.delete!(path)) : undefined,
-    rename: files.rename ? (oldPath, newPath) => mutate([oldPath, newPath], () => files.rename!(oldPath, newPath)) : undefined,
+    writeFile: files.writeFile ? (path, content, options) => mutate([path], () => files.writeFile!(path, content, options)) : undefined,
+    delete: files.delete ? (path, options) => mutate([path], () => files.delete!(path, options)) : undefined,
+    rename: files.rename ? (oldPath, newPath, options) => mutate([oldPath, newPath], () => files.rename!(oldPath, newPath, options)) : undefined,
   };
   const unsubscribeRuntime = subscribeRuntimeEndpointWillChange((detail) => {
     if (detail.runtimeKey === detail.previousRuntimeKey) return;
