@@ -13,7 +13,7 @@ import { useDeviceInfo } from '@/lib/device';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { dropdownTriggerVariants } from '@/components/ui/dropdown-trigger';
-import { useConfigStore } from '@/stores/useConfigStore';
+import { selectProvidersForDirectory, useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { ModelPickerList, type ModelPickerEntry, type ModelPickerProvider } from '@/components/model-picker/ModelPickerList';
 
@@ -21,6 +21,7 @@ interface ModelSelectorProps {
     providerId: string;
     modelId: string;
     onChange: (providerId: string, modelId: string) => void;
+    directory?: string | null;
     className?: string;
     allowedProviderIds?: string[];
     isModelAllowed?: (providerId: string, modelId: string) => boolean;
@@ -40,6 +41,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     providerId,
     modelId,
     onChange,
+    directory,
     className,
     allowedProviderIds,
     isModelAllowed,
@@ -50,7 +52,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 }) => {
     const { t } = useI18n();
     const { isReady, isUnavailable } = useOpenCodeReadiness();
-    const providers = useConfigStore((state) => state.providers) as ModelPickerProvider[];
+    // SAFETY: selectProvidersForDirectory returns the provider model shape consumed by ModelPickerList.
+    const providers = useConfigStore((state) => selectProvidersForDirectory(state, directory)) as ModelPickerProvider[];
     const modelsMetadata = useConfigStore((state) => state.modelsMetadata);
     const isMobile = useUIStore((state) => state.isMobile);
     const hiddenModels = useUIStore((state) => state.hiddenModels);
@@ -108,7 +111,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
         }
         const provider = providers.find((entry) => entry.id === providerId);
         const model = provider?.models?.find((entry) => entry.id === modelId);
-        return (typeof model?.name === 'string' && model.name.trim()) || modelId;
+        return model?.name?.trim() || modelId;
     }, [modelId, placeholder, providerId, providers, t]);
 
     const picker = (

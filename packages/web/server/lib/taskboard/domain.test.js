@@ -51,6 +51,69 @@ describe('taskboard domain', () => {
     });
   });
 
+  it('normalizes task execution settings', () => {
+    const task = normalizeTask({
+      id: 'task-1',
+      projectId: 'app',
+      title: 'Run the task',
+      execution: {
+        providerID: ' provider ',
+        modelID: ' model ',
+        variant: ' high ',
+        agent: ' build ',
+        permissionAutoAccept: true,
+        goal: { objective: ' Ship the feature ' },
+      },
+    }, { projectId: 'app', now: 1 });
+
+    expect(task.execution).toEqual({
+      providerID: 'provider',
+      modelID: 'model',
+      variant: 'high',
+      agent: 'build',
+      permissionAutoAccept: true,
+      goal: { objective: 'Ship the feature' },
+    });
+  });
+
+  it('rejects malformed task execution settings', () => {
+    expect(() => normalizeTask({
+      id: 'task-1',
+      projectId: 'app',
+      title: 'Invalid task',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        agent: 'build',
+        permissionAutoAccept: true,
+        goal: { objective: '' },
+      },
+    }, { projectId: 'app', now: 1 })).toThrow('task.execution.goal.objective is required');
+  });
+
+  it('normalizes explicit session targets without reusing the source session', () => {
+    const task = normalizeTask({
+      id: 'task-2',
+      projectId: 'app',
+      title: 'Continue the work',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: null,
+        agent: 'build',
+        permissionAutoAccept: false,
+        goal: null,
+        sessionTarget: { mode: 'fork', sourceSessionId: 'session-1', sourceMessageId: 'message-4' },
+      },
+    }, { projectId: 'app', now: 1 });
+
+    expect(task.execution?.sessionTarget).toEqual({
+      mode: 'fork',
+      sourceSessionId: 'session-1',
+      sourceMessageId: 'message-4',
+    });
+  });
+
   it('normalizes a missing board as an empty project board', () => {
     expect(normalizeTaskboard(null, { projectId: 'app', now: 100 })).toEqual({
       version: 1,

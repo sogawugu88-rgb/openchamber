@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { createTaskboardRuntime } from './runtime.js';
 
@@ -15,6 +18,14 @@ const task = {
   status: 'todo',
   priority: 'high',
   blockedBy: [],
+  execution: {
+    providerID: 'openai',
+    modelID: 'gpt-5.5',
+    variant: 'high',
+    agent: 'build',
+    permissionAutoAccept: true,
+    goal: { objective: 'Ship the board' },
+  },
   sessionId: null,
   runId: null,
   runStatus: 'idle',
@@ -78,9 +89,10 @@ const createRuntime = (overrides = {}) => {
   };
   const runtime = createTaskboardRuntime({
     taskboardStore,
-    listProjects: async () => [{ id: projectId, path: '/repo' }],
+    listProjects: overrides.listProjects || (async () => [{ id: projectId, path: '/repo' }]),
     openChamberSessionService: {
       create: vi.fn(async () => ({ sessionId, directory: '/repo' })),
+      ...(overrides.openChamberSessionService || {}),
     },
     fetchSessionMessages: vi.fn(async () => [userMessage(), assistantMessage()]),
     emitTaskboardEvent: vi.fn(),
@@ -106,7 +118,7 @@ describe('taskboard runtime', () => {
 
     const result = await runtime.runNow(projectId, taskId);
     expect(result).toMatchObject({ sessionId, taskId });
-    expect(taskboardStore.claimNext).toHaveBeenCalledWith(projectId, taskId, 1, expect.any(String));
+    expect(taskboardStore.claimNext).toHaveBeenCalledWith(projectId, taskId, 1, expect.any(String), { ignoreSchedule: true });
     expect(taskboardStore.setRunSession).toHaveBeenCalledWith(projectId, taskId, 2, 'run-1', sessionId);
 
     runtime.processPayload(idleEvent(), '/repo');
@@ -119,6 +131,129 @@ describe('taskboard runtime', () => {
       'run-1',
       { status: 'success' },
     );
+    runtime.stop();
+  });
+
+  it('passes task execution settings to the session service', async () => {
+    const create = vi.fn(async () => ({ sessionId, directory: '/repo' }));
+    const { runtime } = createRuntime({ runtime: { openChamberSessionService: { create } } });
+
+    await runtime.runNow(projectId, taskId);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      projectId,
+      providerID: 'openai',
+      modelID: 'gpt-5.5',
+      variant: 'high',
+      agent: 'build',
+      permissionAutoAccept: true,
+      goal: true,
+      goalObjective: 'Ship the board',
+    }));
+    runtime.stop();
+  });
+
+  it('forks from the captured source boundary instead of reusing the source session', async () => {
+    const fork = vi.fn(async () => ({ sessionId: 'forked-session', directory: '/repo' }));
+    const forkTask = {
+      ...task,
+      execution: {
+        ...task.execution,
+        sessionTarget: { mode: 'fork', sourceSessionId: 'source-session', sourceMessageId: 'source-message' },
+      },
+    };
+    const { runtime, taskboardStore } = createRuntime({
+      taskboardStore: { list: vi.fn(async () => ({ autoRun: true, tasks: [forkTask] })) },
+      openChamberSessionService: { fork },
+    });
+
+    await runtime.runNow(projectId, taskId);
+
+    expect(fork).toHaveBeenCalledWith('source-session', expect.objectContaining({
+      directory: '/repo',
+      messageId: 'source-message',
+      prompt: expect.stringContaining('Ship the board'),
+    }));
+    expect(taskboardStore.setRunSession).toHaveBeenCalledWith(projectId, taskId, 2, 'run-1', 'forked-session');
+    runtime.stop();
+  });
+
+  it('captures the latest completed source message when creating a fork task', async () => {
+    const create = vi.fn(async (_projectId, input) => ({ task: input, board: { autoRun: false, tasks: [] } }));
+    const sourceMessages = [
+      { info: { id: 'assistant-old', role: 'assistant', time: { completed: 2 } }, parts: [] },
+      { info: { id: 'assistant-latest', role: 'assistant', time: { completed: 4 } }, parts: [] },
+    ];
+    const { runtime } = createRuntime({
+      taskboardStore: { create },
+      runtime: { fetchSessionMessages: vi.fn(async () => sourceMessages) },
+    });
+
+    await runtime.createTask(projectId, {
+      title: 'Continue from source',
+      execution: {
+        ...task.execution,
+        sessionTarget: { mode: 'fork', sourceSessionId: 'source-session' },
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(projectId, expect.objectContaining({
+      execution: expect.objectContaining({
+        sessionTarget: { mode: 'fork', sourceSessionId: 'source-session', sourceMessageId: 'assistant-latest' },
+      }),
+    }));
+    runtime.stop();
+  });
+
+  it('writes a bounded handoff document before creating a new session', async () => {
+    const projectPath = await mkdtemp(path.join(os.tmpdir(), 'oc-taskboard-handoff-'));
+    const handoffTask = {
+      ...task,
+      execution: {
+        ...task.execution,
+        sessionTarget: {
+          mode: 'handoff',
+          sourceSessionId: 'source-session',
+          handoffPath: '.openchamber/taskboard/handoffs/task.md',
+        },
+      },
+    };
+    const create = vi.fn(async () => ({ sessionId: 'handoff-session', directory: projectPath }));
+    const { runtime } = createRuntime({
+      listProjects: async () => [{ id: projectId, path: projectPath }],
+      taskboardStore: { list: vi.fn(async () => ({ autoRun: true, tasks: [handoffTask] })) },
+      openChamberSessionService: { create },
+    });
+
+    await runtime.runNow(projectId, taskId);
+
+    const content = await readFile(path.join(projectPath, '.openchamber/taskboard/handoffs/task.md'), 'utf8');
+    expect(content).toContain('# OpenChamber Taskboard Handoff');
+    expect(content).toContain('Ship the board.');
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: expect.stringContaining('.openchamber/taskboard/handoffs/task.md'),
+    }));
+    runtime.stop();
+    await rm(projectPath, { recursive: true, force: true });
+  });
+
+  it('does not move a Goal task to review while the Goal runtime is still active', async () => {
+    let goalStatus = 'active';
+    const fetchSessionGoal = vi.fn(async () => ({ available: true, status: goalStatus }));
+    const { runtime, taskboardStore } = createRuntime({
+      runtime: { fetchSessionGoal, settleDelayMs: 10 },
+    });
+
+    await runtime.runNow(projectId, taskId);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fetchSessionGoal).toHaveBeenCalledWith(sessionId, '/repo');
+    expect(taskboardStore.finishRun).not.toHaveBeenCalled();
+
+    goalStatus = 'complete';
+    runtime.processPayload(idleEvent(), '/repo');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(taskboardStore.finishRun).toHaveBeenCalled();
     runtime.stop();
   });
 
@@ -170,6 +305,59 @@ describe('taskboard runtime', () => {
 
     await expect(runtime.list('missing'))
       .rejects.toMatchObject({ statusCode: 404, code: 'PROJECT_NOT_FOUND' });
+    runtime.stop();
+  });
+
+  it('lists all project boards with isolated read failures', async () => {
+    const list = vi.fn(async (projectID) => {
+      if (projectID === 'broken') throw new Error('offline');
+      return { autoRun: false, tasks: [] };
+    });
+    const acquireWorkerLease = vi.fn();
+    const renewWorkerLease = vi.fn();
+    const releaseWorkerLease = vi.fn();
+    const { runtime } = createRuntime({
+      listProjects: async () => [
+        { id: 'app', label: 'App', path: '/repo' },
+        { id: 'broken', label: 'Broken', path: '/broken' },
+      ],
+      taskboardStore: { list, acquireWorkerLease, renewWorkerLease, releaseWorkerLease },
+    });
+
+    const result = await runtime.listAll();
+
+    expect(result.complete).toBe(false);
+    expect(result.projects).toEqual([
+      {
+        projectId: 'app',
+        name: 'App',
+        path: '/repo',
+        state: 'ready',
+        board: { autoRun: false, tasks: [] },
+        error: null,
+      },
+      {
+        projectId: 'broken',
+        name: 'Broken',
+        path: '/broken',
+        state: 'error',
+        board: null,
+        error: { code: 'TASKBOARD_READ_FAILED', message: 'offline' },
+      },
+    ]);
+    expect(result.worker).toEqual({ running: false, projectId: null, taskId: null, sessionId: null });
+    expect(acquireWorkerLease).not.toHaveBeenCalled();
+    expect(renewWorkerLease).not.toHaveBeenCalled();
+    expect(releaseWorkerLease).not.toHaveBeenCalled();
+    runtime.stop();
+  });
+
+  it('propagates project-list failures instead of returning an empty aggregate', async () => {
+    const { runtime } = createRuntime({
+      listProjects: async () => { throw new Error('settings offline'); },
+    });
+
+    await expect(runtime.listAll()).rejects.toThrow('settings offline');
     runtime.stop();
   });
 

@@ -45,8 +45,12 @@ const resolveGoalInput = (payload, prompt) => {
   if (enabled && !prompt) {
     return { ok: false, error: 'prompt is required when goal is enabled' };
   }
+  const objective = asNonEmptyString(payload?.goalObjective) || prompt;
+  if (enabled && !objective) {
+    return { ok: false, error: 'goalObjective is required when goal is enabled' };
+  }
   if (payload?.goalTokenBudget === undefined) {
-    return { ok: true, enabled, tokenBudget: null };
+    return { ok: true, enabled, tokenBudget: null, objective };
   }
   const tokenBudget = payload.goalTokenBudget;
   if (!Number.isSafeInteger(tokenBudget)
@@ -54,7 +58,7 @@ const resolveGoalInput = (payload, prompt) => {
     || tokenBudget > MAX_GOAL_TOKEN_BUDGET) {
     return { ok: false, error: `goalTokenBudget must be an integer from ${MIN_GOAL_TOKEN_BUDGET} to ${MAX_GOAL_TOKEN_BUDGET}` };
   }
-  return { ok: true, enabled, tokenBudget };
+  return { ok: true, enabled, tokenBudget, objective };
 };
 
 const isPrimaryAgentMode = (mode) => !mode || mode === 'primary' || mode === 'all';
@@ -357,6 +361,7 @@ export const createOpenChamberSessionService = (dependencies) => {
     waitForOpenCodeReady,
     emitSessionCreatedEvent,
     createSessionGoal: createSessionGoalOverride,
+    setSessionAutoAccept,
     sessionKnowledgeRuntime = null,
   } = dependencies;
 
@@ -492,7 +497,7 @@ export const createOpenChamberSessionService = (dependencies) => {
         authHeaders,
         sessionID,
         directory,
-        objective: commandObjective ?? expandedPrompt,
+         objective: commandObjective ?? goalInput.objective ?? expandedPrompt,
         tokenBudget: goalInput.tokenBudget,
         providerID: model.providerID,
         modelID: model.modelID,
@@ -631,6 +636,14 @@ export const createOpenChamberSessionService = (dependencies) => {
       directory: sessionDirectory,
       ...(title ? { title } : {}),
     });
+
+    if (payload.permissionAutoAccept === true && typeof setSessionAutoAccept === 'function') {
+      try {
+        await setSessionAutoAccept(sessionID, true, sessionDirectory);
+      } catch (error) {
+        console.warn('[OpenChamberSessions] failed to enable permission auto-accept for session:', error?.message || error);
+      }
+    }
 
     let dispatch = { model, agent, variant, promptDispatched: false, dispatchedAsCommand: false };
     if (prompt) {

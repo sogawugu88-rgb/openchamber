@@ -44,6 +44,34 @@ describe('taskboard routes', () => {
     expect(res.payload).toEqual(board);
   });
 
+  it('lists all project boards through the runtime', async () => {
+    const aggregate = { schemaVersion: 1, complete: true, projects: [] };
+    const listAll = vi.fn(async () => aggregate);
+    const handlers = captureHandlers({ listAll });
+    const res = createResponse();
+
+    await handlers.get('GET /api/openchamber/taskboard')({}, res);
+
+    expect(listAll).toHaveBeenCalledTimes(1);
+    expect(res.payload).toEqual(aggregate);
+  });
+
+  it('returns an error when the aggregate runtime cannot read projects', async () => {
+    const listAll = vi.fn(async () => {
+      const error = new Error('settings offline');
+      error.statusCode = 503;
+      error.code = 'PROJECT_LIST_FAILED';
+      throw error;
+    });
+    const handlers = captureHandlers({ listAll });
+    const res = createResponse();
+
+    await handlers.get('GET /api/openchamber/taskboard')({}, res);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.payload).toEqual({ error: 'settings offline', code: 'PROJECT_LIST_FAILED' });
+  });
+
   it('returns a task version conflict from a move', async () => {
     const move = vi.fn(async () => {
       const error = new Error('stale');

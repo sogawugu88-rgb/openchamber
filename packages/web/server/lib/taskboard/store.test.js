@@ -8,7 +8,7 @@ import { createTaskboardStore } from './store.js';
 
 const runtimes = [];
 
-const createStore = async () => {
+const createStore = async ({ now } = {}) => {
   const projectsDirPath = await mkdtemp(path.join(os.tmpdir(), 'oc-taskboard-store-'));
   const projectConfigRuntime = createProjectConfigRuntime({
     fsPromises: await import('node:fs/promises'),
@@ -25,7 +25,7 @@ const createStore = async () => {
       let next = 0;
       return () => `task-${next += 1}`;
     })(),
-    now: (() => {
+    now: now || (() => {
       let next = 100;
       return () => next += 100;
     })(),
@@ -57,6 +57,14 @@ describe('taskboard store', () => {
       description: 'Build the first taskboard slice.',
       status: 'todo',
       priority: 'high',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: 'high',
+        agent: 'build',
+        permissionAutoAccept: false,
+        goal: { objective: 'Ship the board' },
+      },
     });
 
     expect(created.task).toMatchObject({
@@ -66,6 +74,14 @@ describe('taskboard store', () => {
       status: 'todo',
       priority: 'high',
       version: 1,
+    });
+    expect(created.task.execution).toEqual({
+      providerID: 'provider',
+      modelID: 'model',
+      variant: 'high',
+      agent: 'build',
+      permissionAutoAccept: false,
+      goal: { objective: 'Ship the board' },
     });
     expect(created.board.tasks).toHaveLength(1);
     expect(created.board.nextTaskNumber).toBe(2);
@@ -190,6 +206,152 @@ describe('taskboard store', () => {
 
     await expect(store.update('app', created.task.id, claimed.task.version, { title: 'Changed' }))
       .rejects.toMatchObject({ statusCode: 409, code: 'TASK_RUNNING' });
+  });
+
+  it('allows updating execution settings before a task starts', async () => {
+    const { store } = await createStore();
+    const created = await store.create('app', {
+      title: 'Editable task',
+      status: 'todo',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: null,
+        agent: 'build',
+        permissionAutoAccept: false,
+        goal: null,
+      },
+    });
+
+    const updated = await store.update('app', created.task.id, created.task.version, {
+      title: 'Edited task',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: 'high',
+        agent: 'plan',
+        permissionAutoAccept: true,
+        goal: { objective: 'Review the task' },
+      },
+    });
+
+    expect(updated.task).toMatchObject({
+      title: 'Edited task',
+      execution: {
+        variant: 'high',
+        agent: 'plan',
+        permissionAutoAccept: true,
+        goal: { objective: 'Review the task' },
+      },
+    });
+    await expect(store.remove('app', created.task.id, updated.task.version)).resolves.toMatchObject({ deleted: true });
+  });
+
+  it('rejects editing and deleting a task that has already started', async () => {
+    const { store } = await createStore();
+    const created = await store.create('app', { title: 'Started task', status: 'todo' });
+    const claimed = await store.claimNext('app', created.task.id, created.task.version, 'run-1');
+    const finished = await store.finishRun('app', created.task.id, claimed.task.version, 'run-1', { status: 'error', error: 'failed' });
+
+    await expect(store.update('app', created.task.id, finished.task.version, { title: 'Nope' }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'TASK_STARTED' });
+    await expect(store.remove('app', created.task.id, finished.task.version))
+      .rejects.toMatchObject({ statusCode: 409, code: 'TASK_STARTED' });
+  });
+
+  it('materializes each due daily template once as an ordinary todo task', async () => {
+    const times = [Date.parse('2026-08-31T23:59:00Z'), Date.parse('2026-09-01T00:01:00Z'), Date.parse('2026-09-01T00:01:01Z')];
+    const { store } = await createStore({ now: () => times.shift() || Date.parse('2026-09-01T00:01:01Z') });
+    const template = await store.create('app', {
+      title: 'Daily check',
+      description: 'Run the daily check.',
+      schedule: { kind: 'daily', time: '00:00', timezone: 'UTC' },
+    });
+
+    const first = await store.materializeDueDailyTemplates('app');
+    expect(first.tasks).toHaveLength(1);
+    expect(first.tasks[0]).toMatchObject({
+      title: 'Daily check',
+      status: 'todo',
+      schedule: null,
+      scheduleTemplateId: template.task.id,
+      scheduledFor: Date.parse('2026-09-01T00:00:00Z'),
+    });
+    expect(first.board.tasks.find((task) => task.id === template.task.id)?.schedule?.nextRunAt).toBeGreaterThan(0);
+
+    const second = await store.materializeDueDailyTemplates('app');
+    expect(second.tasks).toEqual([]);
+  });
+
+  it('keeps future one-time tasks unclaimed while allowing an explicit manual bypass', async () => {
+    const now = Date.parse('2026-09-01T09:00:00Z');
+    const { store } = await createStore({ now: () => now });
+    const task = await store.create('app', {
+      title: 'Future task',
+      status: 'todo',
+      schedule: { kind: 'once', date: '2026-09-02', time: '09:00', timezone: 'UTC' },
+    });
+
+    const automatic = await store.claimNext('app', task.task.id, task.task.version, 'automatic-run');
+    expect(automatic.claimed).toBe(false);
+
+    const manual = await store.claimNext('app', task.task.id, task.task.version, 'manual-run', { ignoreSchedule: true });
+    expect(manual.claimed).toBe(true);
+    expect(manual.task.schedule?.lastScheduledFor).toBe(Date.parse('2026-09-02T09:00:00Z'));
+  });
+
+  it('edits and deletes a task that has never started', async () => {
+    const { store } = await createStore();
+    const created = await store.create('app', {
+      title: 'Editable task',
+      status: 'todo',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: null,
+        agent: 'build',
+        permissionAutoAccept: false,
+        goal: null,
+      },
+    });
+
+    const updated = await store.update('app', created.task.id, created.task.version, {
+      title: 'Edited task',
+      execution: {
+        providerID: 'provider',
+        modelID: 'model',
+        variant: 'high',
+        agent: 'plan',
+        permissionAutoAccept: true,
+        goal: { objective: 'Review the task' },
+      },
+    });
+
+    expect(updated.task).toMatchObject({
+      title: 'Edited task',
+      execution: {
+        variant: 'high',
+        agent: 'plan',
+        permissionAutoAccept: true,
+        goal: { objective: 'Review the task' },
+      },
+    });
+    await expect(store.remove('app', created.task.id, updated.task.version)).resolves.toMatchObject({ deleted: true });
+  });
+
+  it('rejects editing and deleting a task that has already run', async () => {
+    const { store } = await createStore();
+    const created = await store.create('app', { title: 'Started task', status: 'todo' });
+    const claimed = await store.claimNext('app', created.task.id, created.task.version, 'run-1');
+    const finished = await store.finishRun('app', created.task.id, claimed.task.version, 'run-1', {
+      status: 'error',
+      error: 'failed',
+    });
+
+    await expect(store.update('app', created.task.id, finished.task.version, { title: 'Nope' }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'TASK_STARTED' });
+    await expect(store.remove('app', created.task.id, finished.task.version))
+      .rejects.toMatchObject({ statusCode: 409, code: 'TASK_STARTED' });
   });
 
   it('allows only one worker lease per project until it is released', async () => {

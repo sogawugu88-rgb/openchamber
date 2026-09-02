@@ -1,3 +1,5 @@
+import { isTaskScheduleDue, normalizeTaskSchedule } from './schedule.js';
+
 export const TASK_STATUSES = Object.freeze([
   'backlog',
   'todo',
@@ -75,6 +77,63 @@ const normalizeBlockedBy = (value, taskId, identifier) => {
 
 const normalizeNullableString = (value) => asNonEmptyString(value);
 
+const normalizeExecution = (value) => {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value)) throw new Error('task.execution must be an object');
+
+  const providerID = asNonEmptyString(value.providerID);
+  if (!providerID) throw new Error('task.execution.providerID is required');
+  const modelID = asNonEmptyString(value.modelID);
+  if (!modelID) throw new Error('task.execution.modelID is required');
+  const variant = asNonEmptyString(value.variant);
+  const agent = asNonEmptyString(value.agent);
+  if (!agent) throw new Error('task.execution.agent is required');
+
+  let goal = null;
+  if (value.goal !== undefined && value.goal !== null) {
+    if (!isRecord(value.goal)) throw new Error('task.execution.goal must be an object');
+    const objective = asNonEmptyString(value.goal.objective);
+    if (!objective) throw new Error('task.execution.goal.objective is required');
+    goal = { objective: objective.slice(0, 100_000) };
+  }
+
+  const sessionTarget = value.sessionTarget === undefined || value.sessionTarget === null
+    ? null
+    : normalizeSessionTarget(value.sessionTarget);
+
+  const normalized = {
+    providerID,
+    modelID,
+    variant,
+    agent,
+    permissionAutoAccept: value.permissionAutoAccept === true,
+    goal,
+  };
+  if (sessionTarget) normalized.sessionTarget = sessionTarget;
+  return normalized;
+};
+
+const normalizeSessionTarget = (value) => {
+  if (!isRecord(value)) throw new Error('task.execution.sessionTarget must be an object');
+  const mode = asNonEmptyString(value.mode);
+  if (mode === 'new') return { mode };
+  const sourceSessionId = asNonEmptyString(value.sourceSessionId);
+  if (!sourceSessionId) throw new Error('task.execution.sessionTarget.sourceSessionId is required');
+  if (mode === 'fork') {
+    const sourceMessageId = asNonEmptyString(value.sourceMessageId);
+    const target = { mode, sourceSessionId };
+    if (sourceMessageId) target.sourceMessageId = sourceMessageId;
+    return target;
+  }
+  if (mode === 'handoff') {
+    const handoffPath = asNonEmptyString(value.handoffPath);
+    const target = { mode, sourceSessionId };
+    if (handoffPath) target.handoffPath = handoffPath;
+    return target;
+  }
+  throw new Error('task.execution.sessionTarget.mode must be new, fork, or handoff');
+};
+
 const normalizeHistory = (value) => {
   if (!Array.isArray(value)) return [];
   return value
@@ -123,6 +182,10 @@ export const normalizeTask = (value, options = {}) => {
     projectId,
     title: title.slice(0, 240),
     description: asString(value.description).trim().slice(0, 100_000),
+    execution: normalizeExecution(value.execution),
+    schedule: value.schedule === undefined || value.schedule === null ? null : normalizeTaskSchedule(value.schedule, now, options.preserveScheduleState === true),
+    scheduleTemplateId: normalizeNullableString(value.scheduleTemplateId),
+    scheduledFor: Number.isFinite(value.scheduledFor) ? value.scheduledFor : null,
     status,
     priority,
     labels: normalizeLabels(value.labels),
@@ -146,7 +209,7 @@ export const normalizeTaskboard = (value, options = {}) => {
   const tasks = Array.isArray(source.tasks)
     ? source.tasks.map((task) => {
       try {
-        return normalizeTask(task, options);
+        return normalizeTask(task, { ...options, preserveScheduleState: true });
       } catch {
         return null;
       }
@@ -168,7 +231,7 @@ export const canTransitionTaskStatus = (from, to) => {
   return STATUS_TRANSITIONS.get(from)?.has(to) === true;
 };
 
-export const getEligibleTasks = (tasks, taskMap) => {
+export const getEligibleTasks = (tasks, taskMap, options = {}) => {
   const items = Array.isArray(tasks) ? tasks : [];
   const lookup = taskMap || new Map(
     items.flatMap((task) => [
@@ -179,6 +242,8 @@ export const getEligibleTasks = (tasks, taskMap) => {
 
   return items.filter((task) => (
     task?.status === 'todo'
+    && task?.schedule?.kind !== 'daily'
+    && (options.ignoreSchedule === true || !task?.schedule || isTaskScheduleDue(task.schedule, options.now))
     && (Array.isArray(task.blockedBy) ? task.blockedBy : [])
       .every((blockedId) => lookup.get(blockedId)?.status === 'done')
   ));

@@ -4,6 +4,7 @@ import {
   getEligibleTasks,
   normalizeTask,
 } from './domain.js';
+import { advanceDailySchedule, isTaskScheduleDue, markOnceScheduleConsumed } from './schedule.js';
 
 const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
 const isRecord = (value) => Object.prototype.toString.call(value) === '[object Object]';
@@ -32,8 +33,8 @@ const taskIdentifierPrefix = (projectId) => {
   return prefix || 'TASK';
 };
 
-const TASK_PATCH_FIELDS = new Set(['title', 'description', 'priority', 'labels', 'blockedBy', 'sortOrder']);
-const TASK_CREATE_FIELDS = new Set(['title', 'description', 'status', 'priority', 'labels', 'blockedBy']);
+const TASK_PATCH_FIELDS = new Set(['title', 'description', 'priority', 'labels', 'blockedBy', 'sortOrder', 'execution', 'schedule']);
+const TASK_CREATE_FIELDS = new Set(['title', 'description', 'status', 'priority', 'labels', 'blockedBy', 'execution', 'schedule']);
 
 class TaskboardStoreError extends Error {
   constructor(message, statusCode, code, task = null) {
@@ -86,6 +87,13 @@ const assertCreateObject = (input) => {
     throw new TaskboardStoreError('New tasks must start in backlog or todo', 400, 'INVALID_TASK_INPUT');
   }
 };
+
+const hasStarted = (task) => (
+  task.runStatus !== 'idle'
+  || Boolean(task.sessionId)
+  || Boolean(task.runId)
+  || task.history.some((entry) => entry.type === 'claim' || entry.type === 'run')
+);
 
 export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {}) => {
   if (!projectConfigRuntime || !projectConfigRuntime.readTaskboard || !projectConfigRuntime.mutateTaskboard) {
@@ -158,16 +166,29 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
       if (existing.runStatus === 'starting' || existing.runStatus === 'running') {
         throw new TaskboardStoreError('Running tasks cannot be edited', 409, 'TASK_RUNNING', existing);
       }
+      if (hasStarted(existing)) {
+        throw new TaskboardStoreError('Tasks that have already started cannot be edited', 409, 'TASK_STARTED', existing);
+      }
       const timestamp = nowValue(now);
-      const nextTask = normalizeTask({
-        ...existing,
-        ...patch,
-        id: existing.id,
-        projectId: existing.projectId,
-        version: existing.version + 1,
-        createdAt: existing.createdAt,
-        updatedAt: timestamp,
-      }, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      let nextTask;
+      try {
+        nextTask = normalizeTask({
+          ...existing,
+          ...patch,
+          id: existing.id,
+          projectId: existing.projectId,
+          version: existing.version + 1,
+          createdAt: existing.createdAt,
+          updatedAt: timestamp,
+        }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
+      } catch (error) {
+        throw new TaskboardStoreError(
+          error instanceof Error ? error.message : 'Invalid task patch',
+          400,
+          'INVALID_TASK_PATCH',
+          existing,
+        );
+      }
       const changedFields = Object.keys(patch).filter((field) => field !== 'id' && field !== 'projectId');
       const withHistory = appendTaskHistory(nextTask, {
         type: 'update',
@@ -219,7 +240,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
           lastError: null,
         });
       }
-      const nextTask = normalizeTask(taskInput, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      const nextTask = normalizeTask(taskInput, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
       const withHistory = appendTaskHistory(nextTask, {
         type: 'status',
         from: existing.status,
@@ -240,6 +261,9 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
       assertVersion(existing, version);
       if (existing.runStatus === 'starting' || existing.runStatus === 'running') {
         throw new TaskboardStoreError('Running tasks cannot be deleted', 409, 'TASK_RUNNING', existing);
+      }
+      if (hasStarted(existing)) {
+        throw new TaskboardStoreError('Tasks that have already started cannot be deleted', 409, 'TASK_STARTED', existing);
       }
       return {
         taskboard: {
@@ -328,7 +352,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
     return { ...mutation.result, board: mutation.taskboard };
   };
 
-  const claimNext = async (projectId, taskId, version, runId) => {
+  const claimNext = async (projectId, taskId, version, runId, options = {}) => {
     const normalizedRunId = asNonEmptyString(runId);
     if (!normalizedRunId) {
       throw new TaskboardStoreError('runId is required', 400, 'RUN_ID_REQUIRED');
@@ -338,14 +362,15 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
       const existing = current.tasks.find((task) => task.id === taskId);
       if (!existing) throw notFound(taskId);
       assertVersion(existing, version);
+      const timestamp = nowValue(now);
       if (existing.status !== 'todo') return { taskboard: current, result: { claimed: false, task: existing } };
-      if (!getEligibleTasks(current.tasks).some((task) => task.id === taskId)) {
+      if (!getEligibleTasks(current.tasks, undefined, { ignoreSchedule: options.ignoreSchedule === true, now: timestamp }).some((task) => task.id === taskId)) {
         return { taskboard: current, result: { claimed: false, task: existing } };
       }
 
-      const timestamp = nowValue(now);
       const claimed = normalizeTask({
         ...existing,
+        schedule: existing.schedule?.kind === 'once' ? markOnceScheduleConsumed(existing.schedule) : existing.schedule,
         status: 'in_progress',
         runId: normalizedRunId,
         runStatus: 'starting',
@@ -354,7 +379,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
         lastError: null,
         version: existing.version + 1,
         updatedAt: timestamp,
-      }, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
       const withHistory = appendTaskHistory(claimed, {
         type: 'claim',
         runId: normalizedRunId,
@@ -367,6 +392,69 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
       };
     });
     return { ...mutation.result, board: mutation.taskboard };
+  };
+
+  const materializeDueDailyTemplates = async (projectId) => {
+    const mutation = await projectConfigRuntime.mutateTaskboard(projectId, (current) => {
+      const timestamp = nowValue(now);
+      let nextTaskNumber = current.nextTaskNumber;
+      let changed = false;
+      const createdTasks = [];
+      const tasks = [];
+      for (const existing of current.tasks) {
+        if (existing.schedule?.kind !== 'daily' || !isTaskScheduleDue(existing.schedule, timestamp)) {
+          tasks.push(existing);
+          continue;
+        }
+        const scheduledFor = existing.schedule.nextRunAt;
+        const occurrenceId = idFactory();
+        const occurrenceExecution = existing.execution?.sessionTarget?.mode === 'handoff'
+          ? {
+            ...existing.execution,
+            sessionTarget: {
+              ...existing.execution.sessionTarget,
+              handoffPath: `.openchamber/taskboard/handoffs/${occurrenceId}.md`,
+            },
+          }
+          : existing.execution;
+        const occurrence = normalizeTask({
+          ...existing,
+          id: occurrenceId,
+          identifier: `${taskIdentifierPrefix(existing.projectId)}-${nextTaskNumber}`,
+          execution: occurrenceExecution,
+          status: 'todo',
+          schedule: null,
+          scheduleTemplateId: existing.id,
+          scheduledFor,
+          sessionId: null,
+          runId: null,
+          runStatus: 'idle',
+          runStartedAt: null,
+          runFinishedAt: null,
+          lastError: null,
+          history: [],
+          version: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
+        tasks.push(occurrence);
+        createdTasks.push(occurrence);
+        nextTaskNumber += 1;
+        tasks.push(normalizeTask({
+          ...existing,
+          schedule: advanceDailySchedule(existing.schedule, timestamp),
+          version: existing.version + 1,
+          updatedAt: timestamp,
+        }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true }));
+        changed = true;
+      }
+      if (!changed) return { taskboard: current, result: [] };
+      return {
+        taskboard: { ...current, nextTaskNumber, tasks },
+        result: createdTasks,
+      };
+    });
+    return { tasks: mutation.result, board: mutation.taskboard };
   };
 
   const setRunSession = async (projectId, taskId, version, runId, sessionId) => {
@@ -387,7 +475,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
         runStatus: 'running',
         version: existing.version + 1,
         updatedAt: timestamp,
-      }, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
       const tasks = current.tasks.slice();
       tasks[index] = nextTask;
       return { taskboard: { ...current, tasks }, result: nextTask };
@@ -415,7 +503,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
         lastError: outcome?.status === 'success' ? null : asNonEmptyString(outcome?.error),
         version: existing.version + 1,
         updatedAt: timestamp,
-      }, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
       const withHistory = appendTaskHistory(nextTask, {
         type: 'run',
         runId,
@@ -448,7 +536,7 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
         lastError: asNonEmptyString(error) || 'Worker stopped before the task run completed',
         version: existing.version + 1,
         updatedAt: timestamp,
-      }, { projectId: existing.projectId, now: timestamp, createId: idFactory });
+      }, { projectId: existing.projectId, now: timestamp, createId: idFactory, preserveScheduleState: true });
       const withHistory = appendTaskHistory(nextTask, {
         type: 'run',
         runId: existing.runId,
@@ -478,5 +566,6 @@ export const createTaskboardStore = ({ projectConfigRuntime, createId, now } = {
     setRunSession,
     finishRun,
     recoverOrphanedTask,
+    materializeDueDailyTemplates,
   };
 };

@@ -318,6 +318,41 @@ describe('openchamber session routes', () => {
     }
   });
 
+  it('uses a separate goal objective and enables permission auto-accept before dispatch', async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (url) => {
+      if (String(url).includes('/prompt_async')) return { ok: true, text: async () => '' };
+      return { ok: true, json: async () => ({ id: 'ses_123' }) };
+    });
+    const setSessionAutoAccept = vi.fn(async () => undefined);
+    const createSessionGoal = vi.fn(async () => undefined);
+    globalThis.fetch = fetchMock;
+    try {
+      const { app } = createApp({ setSessionAutoAccept, createSessionGoal });
+      await request(app)
+        .post('/api/openchamber/sessions')
+        .send({
+          directory: '/repo/app',
+          prompt: 'Implement the task',
+          model: 'openai/gpt-5.5',
+          agent: 'build',
+          goal: true,
+          goalObjective: 'Deliver and verify the task',
+          permissionAutoAccept: true,
+        })
+        .expect(200);
+
+      const promptCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/prompt_async'));
+      expect(setSessionAutoAccept).toHaveBeenCalledWith('ses_123', true, '/repo/app');
+      expect(createSessionGoal).toHaveBeenCalledWith(expect.objectContaining({
+        objective: 'Deliver and verify the task',
+      }));
+      expect(setSessionAutoAccept.mock.invocationCallOrder[0]).toBeLessThan(promptCall ? fetchMock.mock.invocationCallOrder.at(-1) : 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('rejects invalid goal requests before creating a session', async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = vi.fn();

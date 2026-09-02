@@ -7,6 +7,29 @@ const taskboardStatusSchema = z.enum([
 ]);
 const taskboardPrioritySchema = z.enum(['none', 'urgent', 'high', 'medium', 'low']);
 const taskboardRunStatusSchema = z.enum(['idle', 'starting', 'running', 'success', 'error']);
+const taskboardSessionTargetSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('new') }),
+  z.object({ mode: z.literal('fork'), sourceSessionId: z.string().min(1), sourceMessageId: z.string().min(1).optional() }),
+  z.object({ mode: z.literal('handoff'), sourceSessionId: z.string().min(1), handoffPath: z.string().min(1).optional() }),
+]);
+const taskboardScheduleSchema = z.object({
+  kind: z.enum(['once', 'daily']),
+  date: z.string().optional(),
+  time: z.string().optional(),
+  times: z.array(z.string()).optional(),
+  timezone: z.string(),
+  nextRunAt: z.number().nullable().optional(),
+  lastScheduledFor: z.number().nullable(),
+});
+const taskboardExecutionSchema = z.object({
+  providerID: z.string().min(1),
+  modelID: z.string().min(1),
+  variant: z.string().nullable(),
+  agent: z.string().min(1),
+  permissionAutoAccept: z.boolean(),
+  goal: z.object({ objective: z.string().min(1) }).nullable(),
+  sessionTarget: taskboardSessionTargetSchema.nullable().optional(),
+});
 const taskboardHistorySchema = z.object({
   type: z.enum(['update', 'status', 'claim', 'run']),
   at: z.number(),
@@ -33,6 +56,10 @@ const taskboardTaskSchema = z.object({
   runStartedAt: z.number().nullable(),
   runFinishedAt: z.number().nullable(),
   lastError: z.string().nullable(),
+  execution: taskboardExecutionSchema.nullable().default(null),
+  schedule: taskboardScheduleSchema.nullable().default(null),
+  scheduleTemplateId: z.string().nullable().default(null),
+  scheduledFor: z.number().nullable().default(null),
   history: z.array(taskboardHistorySchema),
   version: z.number(),
   createdAt: z.number(),
@@ -59,12 +86,35 @@ const taskboardRunResultSchema = z.object({
   error: z.string().optional(),
 });
 const taskboardErrorSchema = z.object({ error: z.string().optional(), code: z.string().optional() });
+const taskboardAggregateProjectSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string(),
+  path: z.string(),
+  state: z.enum(['ready', 'error']),
+  board: taskboardSchema.nullable(),
+  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+});
+const taskboardAggregateSchema = z.object({
+  schemaVersion: z.literal(1),
+  observedAt: z.number(),
+  complete: z.boolean(),
+  worker: z.object({
+    running: z.boolean(),
+    projectId: z.string().nullable(),
+    taskId: z.string().nullable(),
+    sessionId: z.string().nullable(),
+  }),
+  projects: z.array(taskboardAggregateProjectSchema),
+});
 
 export type TaskboardStatus = z.infer<typeof taskboardStatusSchema>;
 export type TaskboardPriority = z.infer<typeof taskboardPrioritySchema>;
+export type TaskboardExecution = z.infer<typeof taskboardExecutionSchema>;
+export type TaskboardSchedule = z.infer<typeof taskboardScheduleSchema>;
 
 export type TaskboardTask = z.infer<typeof taskboardTaskSchema>;
 export type Taskboard = z.infer<typeof taskboardSchema>;
+export type TaskboardAggregate = z.infer<typeof taskboardAggregateSchema>;
 
 export type TaskboardTaskInput = {
   title: string;
@@ -73,12 +123,17 @@ export type TaskboardTaskInput = {
   priority?: TaskboardPriority;
   labels?: string[];
   blockedBy?: string[];
+  execution?: TaskboardExecution;
+  schedule?: Omit<TaskboardSchedule, 'nextRunAt' | 'lastScheduledFor'>;
 };
 
 export type TaskboardTaskPatch = Partial<Pick<
   TaskboardTask,
   'title' | 'description' | 'priority' | 'labels' | 'blockedBy'
->>;
+  | 'execution'
+>> & {
+  schedule?: TaskboardTaskInput['schedule'] | null;
+};
 
 type TaskboardMutation = {
   task: TaskboardTask;
@@ -145,6 +200,12 @@ export const fetchTaskboard = async (projectId: string): Promise<Taskboard> => {
   const response = await runtimeFetch(taskboardPath(projectId));
   if (!response.ok) throw await parseApiError(response, 'Failed to load taskboard');
   return taskboardSchema.parse(await response.json());
+};
+
+export const fetchAllTaskboards = async (): Promise<TaskboardAggregate> => {
+  const response = await runtimeFetch('/api/openchamber/taskboard');
+  if (!response.ok) throw await parseApiError(response, 'Failed to load all taskboards');
+  return taskboardAggregateSchema.parse(await response.json());
 };
 
 export const setTaskboardAutoRun = async (projectId: string, autoRun: boolean): Promise<Taskboard> => {

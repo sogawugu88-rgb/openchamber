@@ -1359,6 +1359,7 @@ const openChamberSessionService = createOpenChamberSessionService({
   waitForOpenCodeReady,
   emitSessionCreatedEvent,
   sessionKnowledgeRuntime,
+  setSessionAutoAccept: (sessionId, enabled, directory) => permissionAutoAcceptRuntime.setSessionPolicy(sessionId, enabled, directory),
 });
 taskboardRuntime = createTaskboardRuntime({
   taskboardStore,
@@ -1375,6 +1376,29 @@ taskboardRuntime = createTaskboardRuntime({
     const response = await client.session.status({ directory });
     const statuses = response?.data;
     return statuses?.[sessionId] || { type: 'idle' };
+  },
+  fetchSessionGoal: async (sessionId, directory) => {
+    try {
+      const client = createOpencodeClient({
+        baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
+        headers: getOpenCodeAuthHeaders(),
+      });
+      const response = await client.session.get({ sessionID: sessionId, directory });
+      const metadata = response?.data?.metadata;
+      const namespace = metadata && Object.prototype.toString.call(metadata) === '[object Object]'
+        ? metadata.openchamber
+        : null;
+      const goal = namespace && Object.prototype.toString.call(namespace) === '[object Object]'
+        ? namespace.goal
+        : null;
+      const status = goal && Object.prototype.toString.call(goal) === '[object Object]'
+        && Object.prototype.toString.call(goal.status) === '[object String]'
+        ? String(goal.status)
+        : null;
+      return { available: true, status };
+    } catch {
+      return { available: false, status: null };
+    }
   },
   fetchSessionMessages: async (sessionId, directory) => {
     const client = createOpencodeClient({

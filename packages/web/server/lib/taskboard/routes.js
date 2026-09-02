@@ -47,6 +47,14 @@ export const registerTaskboardRoutes = (app, dependencies) => {
   const { taskboardRuntime } = dependencies;
   if (!taskboardRuntime) throw new Error('taskboardRuntime is required');
 
+  app.get('/api/openchamber/taskboard', async (_req, res) => {
+    try {
+      return res.json(await taskboardRuntime.listAll());
+    } catch (error) {
+      return sendError(res, error, 'Failed to load all taskboards');
+    }
+  });
+
   app.get('/api/projects/:projectId/taskboard', async (req, res) => {
     const projectId = parseProjectId(req);
     if (!projectId) return res.status(400).json({ error: 'projectId is required', code: 'PROJECT_ID_REQUIRED' });

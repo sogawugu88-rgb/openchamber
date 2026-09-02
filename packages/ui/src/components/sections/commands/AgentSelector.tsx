@@ -6,7 +6,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useAgentsStore, filterVisibleAgents } from '@/stores/useAgentsStore';
+import { selectAgentsForDirectory, useAgentsStore, filterVisibleAgents } from '@/stores/useAgentsStore';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useDeviceInfo } from '@/lib/device';
@@ -20,6 +20,7 @@ import { useOpenCodeReadiness } from '@/hooks/useOpenCodeReadiness';
 interface AgentSelectorProps {
     agentName: string;
     onChange: (agentName: string) => void;
+    directory?: string | null;
     className?: string;
     filter?: (agent: Agent) => boolean;
     dropdownPortalToBody?: boolean;
@@ -28,20 +29,19 @@ interface AgentSelectorProps {
 export const AgentSelector: React.FC<AgentSelectorProps> = ({
     agentName,
     onChange,
+    directory,
     className,
     filter,
     dropdownPortalToBody = false,
 }) => {
     const { t } = useI18n();
     const { isReady, isUnavailable } = useOpenCodeReadiness();
-    const configAgents = useConfigStore((state) => state.agents);
-    const agentsStoreAgents = useAgentsStore((state) => state.agents);
+    const agentsStoreAgents = useAgentsStore((state) => selectAgentsForDirectory(state, directory));
     const loadAgentsStore = useAgentsStore((state) => state.loadAgents);
     const loadConfigAgents = useConfigStore((state) => state.loadAgents);
-    const rawAgents = React.useMemo(() => {
-        if (Array.isArray(configAgents) && configAgents.length > 0) return configAgents;
-        return Array.isArray(agentsStoreAgents) ? agentsStoreAgents : [];
-    }, [configAgents, agentsStoreAgents]);
+    const rawAgents = React.useMemo(() => (
+        Array.isArray(agentsStoreAgents) ? agentsStoreAgents : []
+    ), [agentsStoreAgents]);
     const agents = React.useMemo(() => {
         const visible = filterVisibleAgents(rawAgents);
         return filter ? visible.filter(filter) : visible;
@@ -54,9 +54,9 @@ export const AgentSelector: React.FC<AgentSelectorProps> = ({
 
     React.useEffect(() => {
         if (rawAgents.length > 0) return;
-        void loadConfigAgents();
-        void loadAgentsStore();
-    }, [rawAgents.length, loadConfigAgents, loadAgentsStore]);
+        void loadConfigAgents({ directory, source: 'agentSelector' });
+        void loadAgentsStore(directory);
+    }, [directory, rawAgents.length, loadConfigAgents, loadAgentsStore]);
 
     const closeMobilePanel = () => setIsMobilePanelOpen(false);
 
