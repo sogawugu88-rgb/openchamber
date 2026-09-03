@@ -27,6 +27,35 @@ export interface TerminalTheme {
   brightWhite: string;
 }
 
+const TERMINAL_FONT_FALLBACKS = [
+  '"JetBrainsMono Nerd Font"',
+  '"FiraCode Nerd Font"',
+  '"Cascadia Code PL"',
+  '"Fira Code"',
+  '"JetBrains Mono"',
+  '"SFMono-Regular"',
+  'Menlo',
+  'Consolas',
+  '"Cascadia Mono"',
+  '"Segoe UI Mono"',
+  '"Liberation Mono"',
+  '"DejaVu Sans Mono"',
+  '"Courier New"',
+  'monospace',
+] as const;
+
+export const buildTerminalFontFamily = (fontFamily: string): string => {
+  const requestedFamilies = fontFamily
+    .split(',')
+    .map((family) => family.trim())
+    .filter((family) => {
+      const normalized = family.replace(/^['"]|['"]$/g, '').toLowerCase();
+      return normalized !== 'ui-monospace' && normalized !== 'monospace';
+    });
+
+  return [...requestedFamilies, ...TERMINAL_FONT_FALLBACKS].join(', ');
+};
+
 export function convertThemeToXterm(theme: Theme): TerminalTheme {
   const { colors } = theme;
   const syntax = colors.syntax.base;
@@ -72,9 +101,7 @@ export function getGhosttyTerminalOptions(
   ghostty: Ghostty,
   disableStdin = false
 ) {
-  const powerlineFallbacks =
-    '"JetBrainsMonoNL Nerd Font", "FiraCode Nerd Font", "Cascadia Code PL", "Fira Code", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", "Courier New", monospace';
-  const augmentedFontFamily = `${fontFamily}, ${powerlineFallbacks}`;
+  const augmentedFontFamily = buildTerminalFontFamily(fontFamily);
 
   return {
     // TerminalViewport enables blinking only while its input owns focus.

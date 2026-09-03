@@ -3,7 +3,7 @@ import type { FitAddon, Ghostty, Terminal as GhosttyTerminal } from 'ghostty-web
 
 import { cn } from '@/lib/utils';
 import type { TerminalTheme } from '@/lib/terminalTheme';
-import { getGhosttyTerminalOptions } from '@/lib/terminalTheme';
+import { buildTerminalFontFamily, getGhosttyTerminalOptions } from '@/lib/terminalTheme';
 import {
   getGhosttySafeResetSequence,
   rewriteGhosttyDefaultBackgroundResets,
@@ -55,7 +55,7 @@ const getProvisionalTerminalSize = (
   const context = document.createElement('canvas').getContext('2d');
   if (!context || container.clientWidth < 24 || container.clientHeight < 24) return null;
 
-  context.font = `${fontSize}px ${fontFamily}`;
+  context.font = `${fontSize}px ${buildTerminalFontFamily(fontFamily)}`;
   const metrics = context.measureText('M');
   const cellWidth = Math.ceil(metrics.width);
   const cellHeight = Math.ceil(
