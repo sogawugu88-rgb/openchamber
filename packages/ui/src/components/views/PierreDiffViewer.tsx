@@ -26,6 +26,7 @@ import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import { useWorkerPool } from '@/contexts/DiffWorkerProvider';
 import { ensurePierreThemeRegistered, getResolvedShikiTheme } from '@/lib/shiki/appThemeRegistry';
 import { getDefaultTheme } from '@/lib/theme/themes';
+import { DIFF_LINE_FALLBACK_CSS } from '@/lib/diff/diffFallbackCss';
 
 import { useDeviceInfo } from '@/lib/device';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,7 @@ const PIERRE_RUNTIME_BASE_CSS = `
 // as they break resize behavior.
 const WEBKIT_SCROLL_FIX_CSS = `
   ${PIERRE_RUNTIME_BASE_CSS}
+  ${DIFF_LINE_FALLBACK_CSS}
 
   /* While a multi-line content drag is being mapped to a line selection the
      row highlight is the feedback; the native blue text selection on top of
@@ -915,6 +917,17 @@ export const PierreDiffViewer: React.FC<PierreDiffViewerProps> = ({
     if (currentDel) container.style.setProperty('--diffs-deletion-color-override', currentDel);
     if (currentMod) container.style.setProperty('--diffs-modified-color-override', currentMod);
 
+    const currentTheme = isDark ? darkTheme : lightTheme;
+    const currentAddBg = currentTheme.colors.status.successBackground || (isDark ? 'rgba(118, 173, 79, 0.18)' : 'rgba(98, 158, 64, 0.15)');
+    const currentDelBg = currentTheme.colors.status.errorBackground || (isDark ? 'rgba(218, 91, 74, 0.18)' : 'rgba(200, 74, 55, 0.15)');
+    const currentAddEmphasis = currentTheme.colors.status.successBorder || (isDark ? 'rgba(118, 173, 79, 0.35)' : 'rgba(98, 158, 64, 0.32)');
+    const currentDelEmphasis = currentTheme.colors.status.errorBorder || (isDark ? 'rgba(218, 91, 74, 0.35)' : 'rgba(200, 74, 55, 0.32)');
+
+    container.style.setProperty('--diffs-bg-addition-override', currentAddBg);
+    container.style.setProperty('--diffs-bg-deletion-override', currentDelBg);
+    container.style.setProperty('--diffs-bg-addition-emphasis-override', currentAddEmphasis);
+    container.style.setProperty('--diffs-bg-deletion-emphasis-override', currentDelEmphasis);
+
     // Pierre also inlines theme styles on <pre> inside shadow root.
     // Patch it too so already-expanded diffs switch instantly.
     const pre = container.shadowRoot?.querySelector('pre') as HTMLPreElement | null;
@@ -936,8 +949,13 @@ export const PierreDiffViewer: React.FC<PierreDiffViewerProps> = ({
       if (currentAdd) pre.style.setProperty('--diffs-addition-color-override', currentAdd);
       if (currentDel) pre.style.setProperty('--diffs-deletion-color-override', currentDel);
       if (currentMod) pre.style.setProperty('--diffs-modified-color-override', currentMod);
+
+      pre.style.setProperty('--diffs-bg-addition-override', currentAddBg);
+      pre.style.setProperty('--diffs-bg-deletion-override', currentDelBg);
+      pre.style.setProperty('--diffs-bg-addition-emphasis-override', currentAddEmphasis);
+      pre.style.setProperty('--diffs-bg-deletion-emphasis-override', currentDelEmphasis);
     }
-  }, [darkResolvedTheme, diffThemeKey, isDark, lightResolvedTheme]);
+  }, [darkResolvedTheme, darkTheme, diffThemeKey, isDark, lightResolvedTheme, lightTheme]);
 
 
   const options = useMemo(() => ({

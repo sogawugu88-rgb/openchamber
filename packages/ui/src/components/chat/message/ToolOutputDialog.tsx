@@ -11,6 +11,7 @@ import { getLanguageFromExtension } from '@/lib/toolHelpers';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { ensurePierreThemeRegistered } from '@/lib/shiki/appThemeRegistry';
 import { getDefaultTheme } from '@/lib/theme/themes';
+import { DIFF_LINE_FALLBACK_CSS } from '@/lib/diff/diffFallbackCss';
 import {
     renderTodoOutput,
     renderListOutput,
@@ -108,6 +109,8 @@ type PierreThemeConfig = {
 };
 
 const TOOL_DIFF_UNSAFE_CSS = `
+  ${DIFF_LINE_FALLBACK_CSS}
+
   [data-diff-header],
   [data-diff] {
     [data-separator] {
