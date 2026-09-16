@@ -74,7 +74,7 @@ const MAGIC_PROMPT_DEFINITIONS: readonly MagicPromptDefinition[] = [
     title: 'Commit Generation Visible Prompt',
     group: 'Git',
     description: 'Visible user message for commit message generation.',
-    template: 'You are generating a Conventional Commits subject line from the diffs of the selected files.',
+    template: 'You are generating a Conventional Commits message (subject, optional body, and optional footer) from the diffs of the selected files.',
   },
   {
     id: 'git.commit.generate.instructions',
@@ -88,14 +88,16 @@ const MAGIC_PROMPT_DEFINITIONS: readonly MagicPromptDefinition[] = [
     template: `Return exactly one JSON object and nothing else. Do not include prose, markdown, explanations, or code fences.
 
 The JSON object must have exactly this shape:
-{"subject": string, "highlights": string[]}
+{"subject": string, "body": string | null, "footer": string | null, "highlights": string[]}
 
 Rules:
 - match the style of the recent commits below: their language, capitalization, use or absence of a type prefix or scope, and typical length
-- if the recent commits are written in a language other than English, write the subject and highlights in that language
-- when the recent commits show no consistent style, use the format <type>: <summary> with one of: feat, fix, refactor, perf, docs, test, build, ci, chore, style, revert, and no scope
-- keep subject concise and user-facing
-- highlights: 0-3 concise user-facing points
+- if the recent commits are written in a language other than English, write the subject, body, footer, and highlights in that language
+- when the recent commits show no consistent style, use the Conventional Commits format <type>(<optional scope>): <summary> with one of: feat, fix, refactor, perf, docs, test, build, ci, chore, style, revert
+- keep subject concise and user-facing (first line, ideally <= 72 characters)
+- body: when changes are non-trivial or need context, provide a clear explanation of what changed and why. Use plain text paragraphs or bullet points. Set to null or empty string if the change is simple and self-explanatory
+- footer: provide breaking changes (e.g. "BREAKING CHANGE: ...") or issue references (e.g. "Refs: #123", "Fixes #45") when applicable, otherwise null
+- highlights: 0-3 concise user-facing summary bullet points
 - use double quotes for all JSON strings
 - do not include trailing commas or comments
 

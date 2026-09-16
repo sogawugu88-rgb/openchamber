@@ -272,15 +272,49 @@ const collectRecentCommitSubjects = async (directory: string): Promise<string> =
   }
 };
 
-const parseCommitStructured = (structured: Record<string, unknown> | null): { subject: string; highlights: string[] } => {
+export const parseCommitStructured = (
+  structured: Record<string, unknown> | null
+): import('./api/types').GeneratedCommitMessage => {
   const subject = typeof structured?.subject === 'string' ? structured.subject.trim() : '';
+  const body = typeof structured?.body === 'string' && structured.body.trim().length > 0
+    ? structured.body.trim()
+    : undefined;
+  const footer = typeof structured?.footer === 'string' && structured.footer.trim().length > 0
+    ? structured.footer.trim()
+    : undefined;
   const highlights = Array.isArray(structured?.highlights)
-    ? structured.highlights.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean).slice(0, 3)
+    ? structured.highlights.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean).slice(0, 5)
     : [];
   if (!subject) {
     throw new Error('Structured output missing subject');
   }
-  return { subject, highlights };
+  return {
+    subject,
+    ...(body ? { body } : {}),
+    ...(footer ? { footer } : {}),
+    highlights,
+  };
+};
+
+export const formatFullCommitMessage = (message: {
+  subject: string;
+  body?: string;
+  footer?: string;
+}): string => {
+  const parts: string[] = [];
+  const subject = message.subject?.trim() ?? '';
+  if (subject) {
+    parts.push(subject);
+  }
+  const body = message.body?.trim();
+  if (body) {
+    parts.push(body);
+  }
+  const footer = message.footer?.trim();
+  if (footer) {
+    parts.push(footer);
+  }
+  return parts.join('\n\n');
 };
 
 // Legacy transport: run the structured generation inside the active chat

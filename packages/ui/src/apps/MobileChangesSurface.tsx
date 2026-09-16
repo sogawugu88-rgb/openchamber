@@ -12,7 +12,14 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import type { GitStatus } from '@/lib/api/types';
 import { useI18n } from '@/lib/i18n';
-import { generateCommitMessage, stageGitFile, stageGitFiles, unstageGitFile, unstageGitFiles } from '@/lib/gitApi';
+import {
+  generateCommitMessage,
+  formatFullCommitMessage,
+  stageGitFile,
+  stageGitFiles,
+  unstageGitFile,
+  unstageGitFiles,
+} from '@/lib/gitApi';
 import type { GitRemote } from '@/lib/gitApi';
 import { getLanguageFromExtension, isImageFile } from '@/lib/toolHelpers';
 import {
@@ -345,7 +352,7 @@ export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = ({ onCl
     setIsGeneratingMessage(true);
     try {
       const { message } = await generateCommitMessage(currentDirectory, selectedFilePaths);
-      setCommitMessage(message.subject?.trim() ?? '');
+      setCommitMessage(formatFullCommitMessage(message));
       setGeneratedHighlights(Array.isArray(message.highlights) ? message.highlights : []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('gitView.toast.generateCommitMessageFailed'));

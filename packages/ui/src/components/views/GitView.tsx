@@ -64,7 +64,11 @@ import { createGitIndexMutationQueue, type GitIndexMutationDirection, type GitIn
 import type { GitRemote } from '@/lib/gitApi';
 import { getRootBranch } from '@/lib/worktrees/worktreeStatus';
 import { cn } from '@/lib/utils';
-import { generateCommitMessage as generateSessionCommitMessage, getGitWorktreeBootstrapStatus } from '@/lib/gitApi';
+import {
+  generateCommitMessage as generateSessionCommitMessage,
+  formatFullCommitMessage,
+  getGitWorktreeBootstrapStatus,
+} from '@/lib/gitApi';
 import { sessionEvents } from '@/lib/sessionEvents';
 import { useI18n } from '@/lib/i18n';
 
@@ -1227,7 +1231,12 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
             }
           }
         }
-        setCommitMessage(finalSubject);
+        const fullMessage = formatFullCommitMessage({
+          subject: finalSubject,
+          body: message.body,
+          footer: message.footer,
+        });
+        setCommitMessage(fullMessage);
       }
       setGeneratedHighlights(highlights);
 

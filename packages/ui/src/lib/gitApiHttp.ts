@@ -515,21 +515,21 @@ export async function generateCommitMessage(
     throw new Error('No files provided to generate commit message');
   }
 
-  const body: Record<string, unknown> = { files };
+  const requestBody: Record<string, unknown> = { files };
   if (options?.zenModel) {
-    body.zenModel = options.zenModel;
+    requestBody.zenModel = options.zenModel;
   }
   if (options?.providerId) {
-    body.providerId = options.providerId;
+    requestBody.providerId = options.providerId;
   }
   if (options?.modelId) {
-    body.modelId = options.modelId;
+    requestBody.modelId = options.modelId;
   }
 
   const response = await runtimeFetch(buildUrl(`${API_BASE}/commit-message`, directory), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -556,6 +556,16 @@ export async function generateCommitMessage(
       ? data.message.subject.trim()
       : '';
 
+  const body =
+    typeof data.message.body === 'string' && data.message.body.trim().length > 0
+      ? data.message.body.trim()
+      : undefined;
+
+  const footer =
+    typeof data.message.footer === 'string' && data.message.footer.trim().length > 0
+      ? data.message.footer.trim()
+      : undefined;
+
   const highlights: string[] = Array.isArray(data.message.highlights)
     ? (data.message.highlights as unknown[])
         .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -565,6 +575,8 @@ export async function generateCommitMessage(
   return {
     message: {
       subject,
+      ...(body ? { body } : {}),
+      ...(footer ? { footer } : {}),
       highlights,
     },
   };

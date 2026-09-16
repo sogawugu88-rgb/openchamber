@@ -470,6 +470,8 @@ export interface GitLogOptions {
 
 export interface GeneratedCommitMessage {
   subject: string;
+  body?: string;
+  footer?: string;
   highlights: string[];
 }
 
