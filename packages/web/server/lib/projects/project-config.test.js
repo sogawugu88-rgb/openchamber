@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import os from 'os';
 import path from 'path';
-import { mkdtemp, rm, readFile, writeFile } from 'fs/promises';
+import { access, mkdtemp, readdir, rm, readFile, writeFile } from 'fs/promises';
 import { createProjectConfigRuntime } from './project-config.js';
 
 const createRuntime = async () => {
@@ -141,6 +141,24 @@ describe('project-config runtime', () => {
       expect(raw.projectPath).toBe('/tmp/demo');
       expect(raw.scheduledTasks).toHaveLength(1);
       expect(raw.version).toBe(1);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('quarantines truncated project config JSON and starts with an empty config', async () => {
+    const { runtime, cleanup } = await createRuntime();
+    try {
+      const projectID = 'truncated-config';
+      const filePath = runtime.resolveProjectConfigPath(projectID);
+      await writeFile(filePath, '{"scheduledTasks": [{"id": "task-1"}', 'utf8');
+
+      const board = await runtime.readTaskboard(projectID);
+
+      expect(board.tasks).toEqual([]);
+      await expect(access(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      const files = await readdir(path.dirname(filePath));
+      expect(files.some((file) => file.startsWith(`${projectID}.json.corrupt-`))).toBe(true);
     } finally {
       await cleanup();
     }

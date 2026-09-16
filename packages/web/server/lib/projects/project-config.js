@@ -394,6 +394,20 @@ export const createProjectConfigRuntime = (deps) => {
     return path.join(projectsDirPath, `${safeProjectID}.json`);
   };
 
+  const quarantineCorruptProjectConfig = async (projectID, filePath) => {
+    const backupPath = `${filePath}.corrupt-${Date.now()}-${process.pid}`;
+    try {
+      await fsPromises.rename(filePath, backupPath);
+      console.warn(`[project-config] quarantined invalid JSON for project ${projectID}`);
+      return true;
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return true;
+      }
+      return false;
+    }
+  };
+
   const isProcessAlive = (pid) => {
     if (!Number.isInteger(pid) || pid <= 0) {
       return false;
@@ -500,6 +514,9 @@ export const createProjectConfigRuntime = (deps) => {
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (error) {
       if (error && typeof error === 'object' && error.code === 'ENOENT') {
+        return {};
+      }
+      if (error instanceof SyntaxError && await quarantineCorruptProjectConfig(projectID, filePath)) {
         return {};
       }
       throw error;
